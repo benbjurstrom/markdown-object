@@ -21,11 +21,19 @@ final class TikTokenizer implements Tokenizer
 
     public static function forModel(string $model = 'gpt-3.5-turbo-0301'): self
     {
+        if ($model === '') {
+            throw new \InvalidArgumentException('Model name cannot be empty');
+        }
+
         return self::$modelCache[$model] ??= new self(self::provider()->getForModel($model));
     }
 
     public static function forEncoding(string $encoding = 'p50k_base'): self
     {
+        if ($encoding === '') {
+            throw new \InvalidArgumentException('Encoding name cannot be empty');
+        }
+
         return self::$encodingCache[$encoding] ??= new self(self::provider()->get($encoding));
     }
 

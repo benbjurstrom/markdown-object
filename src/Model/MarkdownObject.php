@@ -33,7 +33,12 @@ final class MarkdownObject implements \JsonSerializable
 
     public function toJson(int $flags = 0): string
     {
-        return json_encode($this, $flags | JSON_UNESCAPED_SLASHES);
+        $json = json_encode($this, $flags | JSON_UNESCAPED_SLASHES);
+        if ($json === false) {
+            throw new \RuntimeException('Failed to encode MarkdownObject to JSON');
+        }
+
+        return $json;
     }
 
     public static function fromJson(string $json): self

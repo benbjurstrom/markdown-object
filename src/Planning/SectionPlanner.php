@@ -2,8 +2,12 @@
 
 namespace BenBjurstrom\MarkdownObject\Planning;
 
+use BenBjurstrom\MarkdownObject\Model\MarkdownCode;
 use BenBjurstrom\MarkdownObject\Model\MarkdownHeading;
+use BenBjurstrom\MarkdownObject\Model\MarkdownImage;
 use BenBjurstrom\MarkdownObject\Model\MarkdownObject;
+use BenBjurstrom\MarkdownObject\Model\MarkdownTable;
+use BenBjurstrom\MarkdownObject\Model\MarkdownText;
 
 final class SectionPlanner
 {
@@ -18,9 +22,11 @@ final class SectionPlanner
             if ($node instanceof MarkdownHeading) {
                 break;
             }
-            $preamble[] = $node;
+            if ($node instanceof MarkdownText || $node instanceof MarkdownCode || $node instanceof MarkdownImage || $node instanceof MarkdownTable) {
+                $preamble[] = $node;
+            }
         }
-        if ($preamble) {
+        if ($preamble !== []) {
             $sections[] = new Section([$doc->filename], $preamble, null);
         }
 
@@ -50,7 +56,9 @@ final class SectionPlanner
         $blocks = [];
         foreach ($h->children as $child) {
             if (! $child instanceof MarkdownHeading) {
-                $blocks[] = $child;
+                if ($child instanceof MarkdownText || $child instanceof MarkdownCode || $child instanceof MarkdownImage || $child instanceof MarkdownTable) {
+                    $blocks[] = $child;
+                }
             }
         }
         $out[] = new Section($breadcrumb, $blocks, $h->rawLine);

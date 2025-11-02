@@ -11,6 +11,7 @@ use BenBjurstrom\MarkdownObject\Model\Position;
 use League\CommonMark\Environment\Environment;
 use League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension;
 use League\CommonMark\Extension\Table\TableExtension;
+use League\CommonMark\Node\Block\AbstractBlock;
 use League\CommonMark\Parser\MarkdownParser;
 
 beforeEach(function () {
@@ -231,7 +232,7 @@ it('uses the next line start when a block lacks an end line', function () {
     $posMethod = $ref->getMethod('pos');
     $posMethod->setAccessible(true);
 
-    $block = new class
+    $block = new class extends AbstractBlock
     {
         public function getStartLine(): int
         {

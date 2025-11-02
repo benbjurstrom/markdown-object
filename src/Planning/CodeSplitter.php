@@ -30,7 +30,7 @@ final class CodeSplitter implements Splitter
             $candidateLines = [...$buf, $ln];
             $candidateUnit = $wrap($candidateLines);
             if ($currentTokens + $candidateUnit->tokens > $target && $buf !== []) {
-                $units[] = $currentUnit ?? $wrap($buf);
+                $units[] = $currentUnit;
                 $buf = [$ln];
                 $currentUnit = $wrap($buf);
                 $currentTokens = $currentUnit->tokens;
@@ -43,9 +43,7 @@ final class CodeSplitter implements Splitter
             $currentTokens = $candidateUnit->tokens;
         }
         // $buf will always have at least one element after the loop
-        if ($currentUnit === null) {
-            $currentUnit = $wrap($buf);
-        }
+        // $currentUnit is guaranteed to be set after the loop
         $units[] = $currentUnit;
         // Safety: ensure no unit exceeds $hardCap (rare, unless a single line is huge)
         $result = [];

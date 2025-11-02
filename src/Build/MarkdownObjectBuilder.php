@@ -16,8 +16,11 @@ use League\CommonMark\Extension\CommonMark\Node\Block\Heading;
 use League\CommonMark\Extension\CommonMark\Node\Block\IndentedCode;
 use League\CommonMark\Extension\CommonMark\Node\Inline\Image;
 use League\CommonMark\Extension\Table\Table;
+use League\CommonMark\Node\Block\AbstractBlock;
 use League\CommonMark\Node\Block\Document;
 use League\CommonMark\Node\Block\Paragraph;
+use League\CommonMark\Node\Node;
+use League\CommonMark\Node\StringContainerInterface;
 
 final class MarkdownObjectBuilder
 {
@@ -144,6 +147,14 @@ final class MarkdownObjectBuilder
         }
 
         // Fallback: raw line slice
+        // All CommonMark blocks extend AbstractBlock, which has getStartLine/getEndLine
+        if (! $node instanceof AbstractBlock) {
+            return new MarkdownText(
+                raw: '',
+                pos: null
+            );
+        }
+
         return new MarkdownText(
             raw: $this->sliceByLines($lines, $node->getStartLine(), $node->getEndLine()),
             pos: $this->pos($node, $lineStarts)
@@ -154,12 +165,15 @@ final class MarkdownObjectBuilder
      * Extracts plain text from a node with inline formatting (bold, italic, links, etc.).
      * Recursively walks the node tree to gather all text literals, stripping formatting.
      */
-    private function inlineText(object $node): string
+    private function inlineText(Node $node): string
     {
         $txt = '';
         for ($c = $node->firstChild(); $c; $c = $c->next()) {
-            if (method_exists($c, 'getLiteral') && ($v = $c->getLiteral()) !== null) {
-                $txt .= $v;
+            if ($c instanceof StringContainerInterface) {
+                $v = $c->getLiteral();
+                if ($v !== '') {
+                    $txt .= $v;
+                }
             }
             if ($c->firstChild()) {
                 $txt .= $this->inlineText($c);
@@ -200,7 +214,7 @@ final class MarkdownObjectBuilder
      *
      * @param  list<int>  $lineStarts
      */
-    private function pos(object $block, array $lineStarts): ?Position
+    private function pos(AbstractBlock $block, array $lineStarts): ?Position
     {
         $start = $block->getStartLine();
         $end = $block->getEndLine();
