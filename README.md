@@ -5,7 +5,92 @@
 [![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/benbjurstrom/markdown-object/fix-php-code-style-issues.yml?branch=main&label=code%20style&style=flat-square)](https://github.com/benbjurstrom/markdown-object/actions?query=workflow%3A"Fix+PHP+code+style+issues"+branch%3Amain)
 [![Total Downloads](https://img.shields.io/packagist/dt/benbjurstrom/markdown-object.svg?style=flat-square)](https://packagist.org/packages/benbjurstrom/markdown-object)
 
-A powerful PHP library for parsing Markdown documents into structured object models and intelligently chunking them for embedding or processing. Built with **League CommonMark** and **Yethee\Tiktoken** for accurate token counting.
+
+**Structure-aware, token-smart Markdown → chunks for RAG.**
+Turn Markdown into a typed object model, then emit breadcrumbed chunks that align to headings and respect your token budget—ideal for embeddings and retrieval. Built on **League CommonMark** and **Yethee\Tiktoken** for accurate parsing and counts. 
+
+### Why you’d use it (in practice)
+
+* **Heading-aligned chunks** that keep paragraphs, code blocks, and tables intact—no mid-sentence or mid-fence cuts. 
+* **Breadcrumbs** like `file.md › H1 › H2` baked into each chunk for stronger retrieval context, with their token cost automatically budgeted.  
+* **Token-aware planning & packing** (target + hard cap, early finish, final stretch) so chunks land in the sweet spot for your model. 
+
+---
+
+## 10-second demo
+
+From raw Markdown to RAG-ready chunks:
+
+```php
+use League\CommonMark\Environment\Environment;
+use League\CommonMark\MarkdownParser;
+use League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension;
+use League\CommonMark\Extension\Table\TableExtension;
+
+use BenBjurstrom\MarkdownObject\Build\MarkdownObjectBuilder;
+
+// 1) Parse Markdown with CommonMark
+$env = new Environment();
+$env->addExtension(new CommonMarkCoreExtension());
+$env->addExtension(new TableExtension());
+
+$parser   = new MarkdownParser($env);
+$filename = 'guide.md';
+$markdown = file_get_contents($filename);
+$doc      = $parser->parse($markdown);
+
+// 2) Build the structured model
+$builder = new MarkdownObjectBuilder();
+$md      = $builder->build($doc, $filename, $markdown);
+
+// 3) Emit breadcrumbed, token-budgeted chunks
+$chunks = $md->toMarkdownChunks(target: 512, hardCap: 1024);
+
+foreach ($chunks as $i => $chunk) {
+    echo "Chunk #$i\n";
+    echo "Path: " . implode(' › ', $chunk->breadcrumb) . "\n";
+    echo "Tokens: {$chunk->tokenCount}\n\n";
+    echo $chunk->markdown . "\n\n---\n\n";
+}
+
+foreach ($chunks as $i => $chunk) {
+    echo "Chunk #$i\n";
+    echo "Path: " . implode(' › ', $chunk->breadcrumb) . "\n";
+    echo "Tokens: {$chunk->tokenCount}\n\n";
+    echo $chunk->markdown . "\n\n---\n\n";
+}
+
+/*
+Example output (truncated for brevity):
+Chunk #0
+Path: guide.md › Getting Started
+Tokens: 421
+
+# Getting Started
+Markdown Object turns Markdown into a typed model and emits
+heading-aligned chunks with breadcrumbs for better retrieval…
+- Structure-aware splitting (paragraphs, tables, code)
+- Token-aware packing with target/hard cap
+…
+
+---
+
+Chunk #1
+Path: guide.md › Usage › Installation
+Tokens: 503
+
+## Installation
+Run:
+
+    composer require benbjurstrom/markdown-object
+
+Then initialize your pipeline and configure your tokenizer…
+    php artisan vendor:publish
+    php artisan markdown-object:test
+…
+*/
+
+```
 
 ## Features
 
