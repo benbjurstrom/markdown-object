@@ -16,7 +16,8 @@ final class CodeSplitter implements Splitter
         $lines = preg_split("/\R/", $node->bodyRaw) ?: [''];
         $units = [];
         $buf = [];
-        $sum = 0;
+        $currentUnit = null;
+        $currentTokens = 0;
 
         $wrap = function (array $lines) use ($tok, $info): Unit {
             $body = implode("\n", $lines);
@@ -26,18 +27,26 @@ final class CodeSplitter implements Splitter
         };
 
         foreach ($lines as $ln) {
-            $trial = $wrap(array_merge($buf, [$ln]));
-            if ($sum + $trial->tokens > $target && ! empty($buf)) {
-                $units[] = $wrap($buf);
+            $candidateLines = [...$buf, $ln];
+            $candidateUnit = $wrap($candidateLines);
+            if ($currentTokens + $candidateUnit->tokens > $target && $buf !== []) {
+                $units[] = $currentUnit ?? $wrap($buf);
                 $buf = [$ln];
-                $sum = $wrap($buf)->tokens;
-            } else {
-                $buf[] = $ln;
-                $sum = $trial->tokens;
+                $currentUnit = $wrap($buf);
+                $currentTokens = $currentUnit->tokens;
+
+                continue;
             }
+
+            $buf = $candidateLines;
+            $currentUnit = $candidateUnit;
+            $currentTokens = $candidateUnit->tokens;
         }
         // $buf will always have at least one element after the loop
-        $units[] = $wrap($buf);
+        if ($currentUnit === null) {
+            $currentUnit = $wrap($buf);
+        }
+        $units[] = $currentUnit;
         // Safety: ensure no unit exceeds $hardCap (rare, unless a single line is huge)
         $result = [];
         foreach ($units as $u) {

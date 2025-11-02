@@ -11,7 +11,9 @@ final class UnitPlanner
     {
         $units = [];
         foreach ($section->blocks as $b) {
-            $units = array_merge($units, $splitters->split($b, $tok, $target, $hardCap));
+            foreach ($splitters->split($b, $tok, $target, $hardCap) as $unit) {
+                $units[] = $unit;
+            }
         }
 
         // assign part indices for blocks that yielded multiple Units (optional)

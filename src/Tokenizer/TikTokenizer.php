@@ -7,22 +7,31 @@ use Yethee\Tiktoken\EncoderProvider;
 
 final class TikTokenizer implements Tokenizer
 {
+    /** @var array<string, self> */
+    private static array $modelCache = [];
+
+    /** @var array<string, self> */
+    private static array $encodingCache = [];
+
+    private static ?EncoderProvider $provider = null;
+
     private function __construct(
         private \Yethee\Tiktoken\Encoder $encoder
     ) {}
 
     public static function forModel(string $model = 'gpt-3.5-turbo-0301'): self
     {
-        $provider = new EncoderProvider;
-
-        return new self($provider->getForModel($model));
+        return self::$modelCache[$model] ??= new self(self::provider()->getForModel($model));
     }
 
     public static function forEncoding(string $encoding = 'p50k_base'): self
     {
-        $provider = new EncoderProvider;
+        return self::$encodingCache[$encoding] ??= new self(self::provider()->get($encoding));
+    }
 
-        return new self($provider->get($encoding));
+    private static function provider(): EncoderProvider
+    {
+        return self::$provider ??= new EncoderProvider;
     }
 
     public function count(string $text): int

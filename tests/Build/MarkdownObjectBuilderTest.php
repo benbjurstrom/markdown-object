@@ -7,6 +7,7 @@ use BenBjurstrom\MarkdownObject\Model\MarkdownImage;
 use BenBjurstrom\MarkdownObject\Model\MarkdownObject;
 use BenBjurstrom\MarkdownObject\Model\MarkdownTable;
 use BenBjurstrom\MarkdownObject\Model\MarkdownText;
+use BenBjurstrom\MarkdownObject\Model\Position;
 use League\CommonMark\Environment\Environment;
 use League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension;
 use League\CommonMark\Extension\Table\TableExtension;
@@ -219,6 +220,36 @@ MD;
 
     // Second should be text with inline image (MarkdownText)
     expect($h1->children[1])->toBeInstanceOf(MarkdownText::class);
+});
+
+it('uses the next line start when a block lacks an end line', function () {
+    $ref = new ReflectionClass(MarkdownObjectBuilder::class);
+    $compute = $ref->getMethod('computeLineStarts');
+    $compute->setAccessible(true);
+    $lineStarts = $compute->invoke($this->builder, "foo\nbar\nbaz");
+
+    $posMethod = $ref->getMethod('pos');
+    $posMethod->setAccessible(true);
+
+    $block = new class
+    {
+        public function getStartLine(): int
+        {
+            return 2;
+        }
+
+        public function getEndLine(): ?int
+        {
+            return null;
+        }
+    };
+
+    /** @var Position $position */
+    $position = $posMethod->invoke($this->builder, $block, $lineStarts);
+
+    expect($position->bytes->startByte)->toBe($lineStarts[1])
+        ->and($position->bytes->endByte)->toBe($lineStarts[2])
+        ->and($position->lines->endLine)->toBe(2);
 });
 
 it('preserves heading raw line', function () {

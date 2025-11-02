@@ -208,9 +208,11 @@ final class MarkdownObjectBuilder
             return null;
         }
         $startByte = $lineStarts[$start - 1] ?? 0;
-        $endByte = $lineStarts[$end] ?? strlen((string) implode("\n", []));
+        $endLine = $end ?? $start;
+        $lastIndex = count($lineStarts) - 1;
+        $endByte = $lineStarts[$endLine] ?? ($lastIndex >= 0 ? $lineStarts[$lastIndex] : $startByte);
 
-        return new Position(new ByteSpan($startByte, $endByte), new LineSpan($start, $end ?? $start));
+        return new Position(new ByteSpan($startByte, $endByte), new LineSpan($start, $endLine));
     }
 
     /**
