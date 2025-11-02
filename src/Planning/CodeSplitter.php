@@ -16,7 +16,7 @@ final class CodeSplitter implements Splitter
         $lines = preg_split("/\R/", $node->bodyRaw) ?: [''];
         $units = [];
         $buf = [];
-        $sum = 0;
+        $currentUnit = null;
 
         $wrap = function (array $lines) use ($tok, $info): Unit {
             $body = implode("\n", $lines);
@@ -26,18 +26,22 @@ final class CodeSplitter implements Splitter
         };
 
         foreach ($lines as $ln) {
-            $trial = $wrap(array_merge($buf, [$ln]));
-            if ($sum + $trial->tokens > $target && ! empty($buf)) {
-                $units[] = $wrap($buf);
+            $candidateLines = [...$buf, $ln];
+            $candidateUnit = $wrap($candidateLines);
+            if ($candidateUnit->tokens > $target && $buf !== []) {
+                $units[] = $currentUnit;
                 $buf = [$ln];
-                $sum = $wrap($buf)->tokens;
-            } else {
-                $buf[] = $ln;
-                $sum = $trial->tokens;
+                $currentUnit = $wrap($buf);
+
+                continue;
             }
+
+            $buf = $candidateLines;
+            $currentUnit = $candidateUnit;
         }
         // $buf will always have at least one element after the loop
-        $units[] = $wrap($buf);
+        // $currentUnit is guaranteed to be set after the loop
+        $units[] = $currentUnit;
         // Safety: ensure no unit exceeds $hardCap (rare, unless a single line is huge)
         $result = [];
         foreach ($units as $u) {
@@ -48,7 +52,7 @@ final class CodeSplitter implements Splitter
             }
             // hard split by lines even if it means many parts
             $body = preg_replace('/^```[^\n]*\n|\n```$/', '', $u->markdown);
-            $splitLines = preg_split("/\R/", $body) ?: [''];
+            $splitLines = preg_split("/\R/", $body ?? '') ?: [''];
             foreach ($splitLines as $single) {
                 $md = "```{$info}\n".rtrim($single)."\n```";
                 $result[] = new Unit(UnitKind::Code, $md, $tok->count($md));

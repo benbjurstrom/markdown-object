@@ -88,6 +88,7 @@ src/
 │
 ├── Model/                              # Data classes (no business logic)
 │   ├── MarkdownObject.php              # Root document model + orchestration
+│   ├── MarkdownNode.php                # Abstract base class for all nodes
 │   ├── MarkdownHeading.php             # Heading node (has children)
 │   ├── MarkdownText.php                # Text paragraph
 │   ├── MarkdownCode.php                # Code block (stores body only)
@@ -272,12 +273,25 @@ Example output structure:
 
 **All are data classes** (no business logic except JSON serialization)
 
+**Inheritance hierarchy:**
+- All node types extend `MarkdownNode` abstract base class
+- `MarkdownNode` provides centralized serialization/deserialization with helper methods
+- Type-safe polymorphic hydration via `__type` field in serialized data
+
+**Node types:**
 - `MarkdownObject` - Root, orchestrates `toMarkdownChunks()`
 - `MarkdownHeading` - Has `children[]`, `level`, `text`, `rawLine`
 - `MarkdownText` - Has `raw` content
 - `MarkdownCode` - Stores `bodyRaw` (NO fences), `info` (language)
 - `MarkdownImage` - Has `alt`, `src`, `title`, `raw`
 - `MarkdownTable` - Has `raw` markdown
+
+**MarkdownNode base class provides:**
+- `serialize()` - Final method that adds `__type` field for polymorphic deserialization
+- `serializePayload()` - Abstract method each subclass implements
+- `deserialize()` - Abstract static method for type-safe reconstruction
+- `hydrate()` - Polymorphic factory method using `__type` field
+- Helper methods: `expectString()`, `expectNullableString()`, `expectInt()`, `expectNullableArray()`, `assertStringKeys()`
 
 **Critical:** NO `token_count` property on models. Tokens are calculated during splitting.
 
@@ -716,6 +730,7 @@ i=3: unit=400, sum=150
 ## Version
 
 This architecture guide is current as of the implementation that:
+- Uses `MarkdownNode` abstract base class with centralized serialization/deserialization
 - Removed `token_count` from model classes (tokens only on Units)
 - Uses PHP 8.2+ features (readonly classes, enums, promoted properties)
 - Integrates League CommonMark 2.7+ and Yethee Tiktoken
@@ -723,7 +738,8 @@ This architecture guide is current as of the implementation that:
   - Build (13 tests) - Parser correctness
   - Planning (33 tests) - SectionPlanner, UnitPlanner, Packer
   - Render (15 tests) - Chunk assembly and formatting
+- Type-safe polymorphic deserialization via `__type` field
 
-**Test Status:** 77 tests passing (278 assertions) - PHPStan level 5 clean
+**Test Status:** 81 tests passing - PHPStan level 10 clean
 
 For implementation details, see the code. For rationale, see "Design Decisions" above.

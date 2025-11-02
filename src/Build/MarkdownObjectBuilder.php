@@ -7,6 +7,7 @@ use BenBjurstrom\MarkdownObject\Model\LineSpan;
 use BenBjurstrom\MarkdownObject\Model\MarkdownCode;
 use BenBjurstrom\MarkdownObject\Model\MarkdownHeading;
 use BenBjurstrom\MarkdownObject\Model\MarkdownImage;
+use BenBjurstrom\MarkdownObject\Model\MarkdownNode;
 use BenBjurstrom\MarkdownObject\Model\MarkdownObject;
 use BenBjurstrom\MarkdownObject\Model\MarkdownTable;
 use BenBjurstrom\MarkdownObject\Model\MarkdownText;
@@ -16,8 +17,11 @@ use League\CommonMark\Extension\CommonMark\Node\Block\Heading;
 use League\CommonMark\Extension\CommonMark\Node\Block\IndentedCode;
 use League\CommonMark\Extension\CommonMark\Node\Inline\Image;
 use League\CommonMark\Extension\Table\Table;
+use League\CommonMark\Node\Block\AbstractBlock;
 use League\CommonMark\Node\Block\Document;
 use League\CommonMark\Node\Block\Paragraph;
+use League\CommonMark\Node\Node;
+use League\CommonMark\Node\StringContainerInterface;
 
 final class MarkdownObjectBuilder
 {
@@ -33,6 +37,7 @@ final class MarkdownObjectBuilder
         $lineStarts = $this->computeLineStarts($source);
 
         // Collect top-level children (CommonMark flattens headings; we'll nest manually)
+        /** @var list<Node> $nodes */
         $nodes = [];
         for ($child = $document->firstChild(); $child; $child = $child->next()) {
             $nodes[] = $child;
@@ -59,7 +64,7 @@ final class MarkdownObjectBuilder
      * Stops when encountering a heading of equal or higher level (lower heading number).
      * Advances the $i index by reference as it consumes nodes from the array.
      *
-     * @param  list<object>  $nodes
+     * @param  list<Node>  $nodes
      * @param  list<string>  $lines
      * @param  list<int>  $lineStarts
      */
@@ -96,7 +101,7 @@ final class MarkdownObjectBuilder
      * @param  list<string>  $lines
      * @param  list<int>  $lineStarts
      */
-    private function toLeaf(object $node, string $src, array $lines, array $lineStarts): object
+    private function toLeaf(object $node, string $src, array $lines, array $lineStarts): MarkdownNode
     {
         if ($node instanceof Paragraph) {
             $first = $node->firstChild();
@@ -144,6 +149,14 @@ final class MarkdownObjectBuilder
         }
 
         // Fallback: raw line slice
+        // All CommonMark blocks extend AbstractBlock, which has getStartLine/getEndLine
+        if (! $node instanceof AbstractBlock) {
+            return new MarkdownText(
+                raw: '',
+                pos: null
+            );
+        }
+
         return new MarkdownText(
             raw: $this->sliceByLines($lines, $node->getStartLine(), $node->getEndLine()),
             pos: $this->pos($node, $lineStarts)
@@ -154,12 +167,15 @@ final class MarkdownObjectBuilder
      * Extracts plain text from a node with inline formatting (bold, italic, links, etc.).
      * Recursively walks the node tree to gather all text literals, stripping formatting.
      */
-    private function inlineText(object $node): string
+    private function inlineText(Node $node): string
     {
         $txt = '';
         for ($c = $node->firstChild(); $c; $c = $c->next()) {
-            if (method_exists($c, 'getLiteral') && ($v = $c->getLiteral()) !== null) {
-                $txt .= $v;
+            if ($c instanceof StringContainerInterface) {
+                $v = $c->getLiteral();
+                if ($v !== '') {
+                    $txt .= $v;
+                }
             }
             if ($c->firstChild()) {
                 $txt .= $this->inlineText($c);
@@ -200,7 +216,7 @@ final class MarkdownObjectBuilder
      *
      * @param  list<int>  $lineStarts
      */
-    private function pos(object $block, array $lineStarts): ?Position
+    private function pos(AbstractBlock $block, array $lineStarts): ?Position
     {
         $start = $block->getStartLine();
         $end = $block->getEndLine();
@@ -208,9 +224,11 @@ final class MarkdownObjectBuilder
             return null;
         }
         $startByte = $lineStarts[$start - 1] ?? 0;
-        $endByte = $lineStarts[$end] ?? strlen((string) implode("\n", []));
+        $endLine = $end ?? $start;
+        $lastIndex = count($lineStarts) - 1;
+        $endByte = $lineStarts[$endLine] ?? ($lastIndex >= 0 ? $lineStarts[$lastIndex] : $startByte);
 
-        return new Position(new ByteSpan($startByte, $endByte), new LineSpan($start, $end ?? $start));
+        return new Position(new ByteSpan($startByte, $endByte), new LineSpan($start, $endLine));
     }
 
     /**
