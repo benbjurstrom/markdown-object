@@ -13,10 +13,11 @@ use BenBjurstrom\MarkdownObject\Planning\UnitPlanner;
 use BenBjurstrom\MarkdownObject\Render\ChunkTemplate;
 use BenBjurstrom\MarkdownObject\Render\Renderer;
 use BenBjurstrom\MarkdownObject\Tokenizer\TikTokenizer;
+use InvalidArgumentException;
 
 final class MarkdownObject implements \JsonSerializable
 {
-    /** @param list<object> $children */
+    /** @param list<MarkdownNode> $children */
     public function __construct(
         public string $filename,
         public array $children = []
@@ -27,7 +28,12 @@ final class MarkdownObject implements \JsonSerializable
         return [
             'schemaVersion' => 1,
             'filename' => $this->filename,
-            'children' => array_map([$this, 'serNode'], $this->children),
+            'children' => array_map(
+                static function (MarkdownNode $child): array {
+                    return $child->serialize();
+                },
+                $this->children
+            ),
         ];
     }
 
@@ -44,81 +50,47 @@ final class MarkdownObject implements \JsonSerializable
     public static function fromJson(string $json): self
     {
         $data = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
-        $obj = new self($data['filename'] ?? '(unknown)');
-        $obj->children = self::deSerNodes($data['children'] ?? []);
+        if (! is_array($data)) {
+            throw new InvalidArgumentException('Decoded markdown object must be an array.');
+        }
+
+        $filenameValue = $data['filename'] ?? null;
+        $filename = is_string($filenameValue) ? $filenameValue : '(unknown)';
+
+        $childrenValue = $data['children'] ?? null;
+        if ($childrenValue !== null && ! is_array($childrenValue)) {
+            throw new InvalidArgumentException('Markdown object children must be an array when provided.');
+        }
+
+        /** @var array<int|string, mixed> $childrenArray */
+        $childrenArray = is_array($childrenValue) ? $childrenValue : [];
+
+        $obj = new self($filename);
+        $obj->children = self::deserializeNodes($childrenArray);
 
         return $obj;
     }
 
-    /** @return array<string, mixed> */
-    private function serNode(object $n): array
-    {
-        $base = get_object_vars($n);
-        $base['__type'] = $n::class;
-        if ($n instanceof MarkdownHeading) {
-            $base['children'] = array_map([$this, 'serNode'], $n->children);
-        }
-
-        return $base;
-    }
-
     /**
-     * @param  array<int, array<string, mixed>>  $arr
-     * @return list<object>
+     * @param  array<int|string, mixed>  $arr
+     * @return list<MarkdownNode>
      */
-    private static function deSerNodes(array $arr): array
+    private static function deserializeNodes(array $arr): array
     {
         $nodes = [];
-        foreach ($arr as $n) {
-            $type = $n['__type'] ?? '';
-            switch ($type) {
-                case MarkdownHeading::class:
-                    $h = new MarkdownHeading(
-                        $n['level'],
-                        $n['text'],
-                        $n['rawLine'] ?? null,
-                        self::posFromArr($n['pos'] ?? null)
-                    );
-                    $h->children = self::deSerNodes($n['children'] ?? []);
-                    $nodes[] = $h;
-                    break;
-
-                case MarkdownText::class:
-                    $t = new MarkdownText($n['raw'], self::posFromArr($n['pos'] ?? null));
-                    $nodes[] = $t;
-                    break;
-
-                case MarkdownCode::class:
-                    $c = new MarkdownCode($n['bodyRaw'], $n['info'] ?? null, self::posFromArr($n['pos'] ?? null));
-                    $nodes[] = $c;
-                    break;
-
-                case MarkdownImage::class:
-                    $i = new MarkdownImage($n['alt'], $n['src'], $n['title'] ?? null, $n['raw'], self::posFromArr($n['pos'] ?? null));
-                    $nodes[] = $i;
-                    break;
-
-                case MarkdownTable::class:
-                    $tb = new MarkdownTable($n['raw'], self::posFromArr($n['pos'] ?? null));
-                    $nodes[] = $tb;
-                    break;
+        foreach ($arr as $nodePayload) {
+            if (! is_array($nodePayload)) {
+                throw new InvalidArgumentException('Markdown node payload must be an array.');
             }
+
+            MarkdownNode::assertStringKeys($nodePayload, 'Markdown node payload');
+
+            /** @var array<string, mixed> $node */
+            $node = $nodePayload;
+            $nodes[] = MarkdownNode::hydrate($node);
         }
 
         return $nodes;
-    }
-
-    /** @param array<string, mixed>|null $a */
-    private static function posFromArr(?array $a): ?Position
-    {
-        if (! $a) {
-            return null;
-        }
-
-        return new Position(
-            new ByteSpan($a['bytes']['startByte'], $a['bytes']['endByte']),
-            isset($a['lines']) ? new LineSpan($a['lines']['startLine'], $a['lines']['endLine']) : null
-        );
     }
 
     /** @return list<\BenBjurstrom\MarkdownObject\Render\EmittedChunk> */

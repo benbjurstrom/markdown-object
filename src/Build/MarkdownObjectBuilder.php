@@ -7,6 +7,7 @@ use BenBjurstrom\MarkdownObject\Model\LineSpan;
 use BenBjurstrom\MarkdownObject\Model\MarkdownCode;
 use BenBjurstrom\MarkdownObject\Model\MarkdownHeading;
 use BenBjurstrom\MarkdownObject\Model\MarkdownImage;
+use BenBjurstrom\MarkdownObject\Model\MarkdownNode;
 use BenBjurstrom\MarkdownObject\Model\MarkdownObject;
 use BenBjurstrom\MarkdownObject\Model\MarkdownTable;
 use BenBjurstrom\MarkdownObject\Model\MarkdownText;
@@ -36,6 +37,7 @@ final class MarkdownObjectBuilder
         $lineStarts = $this->computeLineStarts($source);
 
         // Collect top-level children (CommonMark flattens headings; we'll nest manually)
+        /** @var list<Node> $nodes */
         $nodes = [];
         for ($child = $document->firstChild(); $child; $child = $child->next()) {
             $nodes[] = $child;
@@ -62,7 +64,7 @@ final class MarkdownObjectBuilder
      * Stops when encountering a heading of equal or higher level (lower heading number).
      * Advances the $i index by reference as it consumes nodes from the array.
      *
-     * @param  list<object>  $nodes
+     * @param  list<Node>  $nodes
      * @param  list<string>  $lines
      * @param  list<int>  $lineStarts
      */
@@ -99,7 +101,7 @@ final class MarkdownObjectBuilder
      * @param  list<string>  $lines
      * @param  list<int>  $lineStarts
      */
-    private function toLeaf(object $node, string $src, array $lines, array $lineStarts): object
+    private function toLeaf(object $node, string $src, array $lines, array $lineStarts): MarkdownNode
     {
         if ($node instanceof Paragraph) {
             $first = $node->firstChild();

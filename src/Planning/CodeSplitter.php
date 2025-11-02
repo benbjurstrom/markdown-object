@@ -17,7 +17,6 @@ final class CodeSplitter implements Splitter
         $units = [];
         $buf = [];
         $currentUnit = null;
-        $currentTokens = 0;
 
         $wrap = function (array $lines) use ($tok, $info): Unit {
             $body = implode("\n", $lines);
@@ -29,18 +28,16 @@ final class CodeSplitter implements Splitter
         foreach ($lines as $ln) {
             $candidateLines = [...$buf, $ln];
             $candidateUnit = $wrap($candidateLines);
-            if ($currentTokens + $candidateUnit->tokens > $target && $buf !== []) {
+            if ($candidateUnit->tokens > $target && $buf !== []) {
                 $units[] = $currentUnit;
                 $buf = [$ln];
                 $currentUnit = $wrap($buf);
-                $currentTokens = $currentUnit->tokens;
 
                 continue;
             }
 
             $buf = $candidateLines;
             $currentUnit = $candidateUnit;
-            $currentTokens = $candidateUnit->tokens;
         }
         // $buf will always have at least one element after the loop
         // $currentUnit is guaranteed to be set after the loop
