@@ -1,0 +1,51 @@
+{
+    "name": "benbjurstrom/markdown-object",
+    "description": "Structure-aware, token-smart chunking for Markdown documents",
+    "keywords": [
+        "benbjurstrom",
+        "markdown-object"
+    ],
+    "homepage": "https://github.com/benbjurstrom/markdown-object",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Ben Bjurstrom",
+            "email": "benbjurstrom@users.noreply.github.com",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": "^8.4",
+        "league/commonmark": "^2.7",
+        "yethee/tiktoken": "^0.11.1"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.0",
+        "pestphp/pest": "^4.0",
+        "phpstan/phpstan": "^2.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "BenBjurstrom\\MarkdownObject\\": "src"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "BenBjurstrom\\MarkdownObject\\Tests\\": "tests"
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/pest",
+            "test-coverage": "vendor/bin/pest --coverage",
+        "format": "vendor/bin/pint"
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true,
+            "phpstan/extension-installer": true
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
