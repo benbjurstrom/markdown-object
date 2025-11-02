@@ -1,6 +1,11 @@
 name: Fix PHP code style issues
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - '**.php'
   pull_request:
     paths:
       - '**.php'
