@@ -55,7 +55,7 @@ final class CodeSplitter implements Splitter
             }
             // hard split by lines even if it means many parts
             $body = preg_replace('/^```[^\n]*\n|\n```$/', '', $u->markdown);
-            $splitLines = preg_split("/\R/", $body) ?: [''];
+            $splitLines = preg_split("/\R/", $body ?? '') ?: [''];
             foreach ($splitLines as $single) {
                 $md = "```{$info}\n".rtrim($single)."\n```";
                 $result[] = new Unit(UnitKind::Code, $md, $tok->count($md));
