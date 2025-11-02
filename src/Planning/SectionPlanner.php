@@ -39,8 +39,8 @@ final class SectionPlanner
     }
 
     /**
-     * @param list<string> $crumb
-     * @param list<Section> $out
+     * @param  list<string>  $crumb
+     * @param  list<Section>  $out
      */
     private function flattenHeading(string $filename, MarkdownHeading $h, array $crumb, array &$out): void
     {

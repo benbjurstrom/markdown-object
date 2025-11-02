@@ -10,8 +10,8 @@ use BenBjurstrom\MarkdownObject\Model\MarkdownText;
 final readonly class Section
 {
     /**
-     * @param list<string> $breadcrumb
-     * @param list<MarkdownText|MarkdownCode|MarkdownImage|MarkdownTable> $blocks
+     * @param  list<string>  $breadcrumb
+     * @param  list<MarkdownText|MarkdownCode|MarkdownImage|MarkdownTable>  $blocks
      */
     public function __construct(
         public array $breadcrumb,
