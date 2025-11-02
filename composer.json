@@ -15,7 +15,7 @@
         }
     ],
     "require": {
-        "php": "^8.4",
+        "php": "^8.3",
         "league/commonmark": "^2.7",
         "yethee/tiktoken": "^0.11.1"
     },
