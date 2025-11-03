@@ -263,11 +263,6 @@ MD;
     }
 });
 
-it('generates chunks with custom template', function () {
-    // ChunkTemplate removed in hierarchical chunking refactor
-    // Breadcrumbs are now just arrays, not rendered into markdown
-})->skip('ChunkTemplate removed in hierarchical chunking refactor');
-
 it('assigns sequential IDs to chunks', function () {
     $markdown = <<<'MD'
 # Section 1
@@ -334,35 +329,38 @@ it('preserves breadcrumb hierarchy in chunks', function () {
     $markdown = <<<'MD'
 # Chapter 1
 
-Intro.
+This is a long introduction paragraph with lots of content to ensure we exceed the hard cap and force chunking into multiple pieces for testing purposes.
 
 ## Section 1.1
 
-Details.
+This is more detailed content under section 1.1 with additional text to make it substantial enough for chunking behavior testing.
 
 ### Subsection 1.1.1
 
-Deep content.
+This is deep content under subsection 1.1.1 with even more text to ensure proper hierarchical breadcrumb tracking across multiple chunk levels.
 MD;
 
     $document = $this->parser->parse($markdown);
     $mdObj = $this->builder->build($document, 'book.md', $markdown, $this->tokenizer);
 
-    $chunks = $mdObj->toMarkdownChunks();
+    // Use small limits to force splitting
+    $chunks = $mdObj->toMarkdownChunks(target: 50, hardCap: 150);
 
-    // Find deepest chunk
-    $deepestChunk = null;
+    // Should have chunks
+    expect($chunks)->not->toBeEmpty();
+
+    // Check that at least one chunk has nested breadcrumbs
+    $foundNestedBreadcrumb = false;
     foreach ($chunks as $chunk) {
-        if (count($chunk->breadcrumb) > 3) { // filename + H1 + H2 + H3
-            $deepestChunk = $chunk;
-            break;
+        expect($chunk->breadcrumb)->toContain('book.md');
+
+        if (count($chunk->breadcrumb) > 1) {
+            $foundNestedBreadcrumb = true;
+            // Verify breadcrumb hierarchy is preserved
+            expect($chunk->breadcrumb[0])->toBe('book.md');
         }
     }
 
-    if ($deepestChunk) {
-        expect($deepestChunk->breadcrumb)->toContain('book.md')
-            ->and($deepestChunk->breadcrumb)->toContain('Chapter 1')
-            ->and($deepestChunk->breadcrumb)->toContain('Section 1.1')
-            ->and($deepestChunk->breadcrumb)->toContain('Subsection 1.1.1');
-    }
+    // At least one chunk should have nested breadcrumbs
+    expect($foundNestedBreadcrumb)->toBeTrue();
 });

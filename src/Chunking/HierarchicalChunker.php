@@ -365,24 +365,6 @@ final class HierarchicalChunker
     }
 
     /**
-     * Render all children into markdown string.
-     *
-     * @param  list<MarkdownNode>  $children
-     */
-    private function renderAllChildren(array $children): string
-    {
-        $parts = [];
-        foreach ($children as $child) {
-            $markdown = $this->renderNode($child);
-            if (trim($markdown) !== '') {
-                $parts[] = $markdown;
-            }
-        }
-
-        return implode("\n\n", $parts);
-    }
-
-    /**
      * Render a single node to markdown.
      */
     private function renderNode(MarkdownNode $node): string

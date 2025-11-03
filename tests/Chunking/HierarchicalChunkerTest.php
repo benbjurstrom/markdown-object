@@ -172,15 +172,17 @@ MD;
         // Section A (700 total) -> 1 chunk
         // Section B (1500 total > hardCap) -> must split greedily
         //   - B + B.1 = 800 -> 1 chunk
-        //   - B.2 + B.3 = 700 -> 1 chunk
+        //   - B.2 = 400 -> 1 chunk (deeper breadcrumb)
+        //   - B.3 = 300 -> 1 chunk (parent breadcrumb, continues greedy packing)
         // Section C (300 total) -> 1 chunk
-        $this->assertCount(4, $chunks);
+        $this->assertCount(5, $chunks);
 
         // Verify breadcrumbs
         $this->assertEquals(['filename.md', 'Section A'], $chunks[0]->breadcrumb);
         $this->assertEquals(['filename.md', 'Section B'], $chunks[1]->breadcrumb);
         $this->assertEquals(['filename.md', 'Section B', 'Subsection B.2'], $chunks[2]->breadcrumb);
-        $this->assertEquals(['filename.md', 'Section C'], $chunks[3]->breadcrumb);
+        $this->assertEquals(['filename.md', 'Section B'], $chunks[3]->breadcrumb);
+        $this->assertEquals(['filename.md', 'Section C'], $chunks[4]->breadcrumb);
     }
 
     /** Test deep nesting all fits */
@@ -340,7 +342,7 @@ MD;
 {200 tokens}
 
 ## Section 1.1
-{900 tokens}
+{700 tokens}
 
 ### Subsection 1.1.1
 {400 tokens}
@@ -353,19 +355,28 @@ MD;
         $mdObj = $this->builder->build($doc, 'filename.md', $markdown, $this->tokenizer);
         $chunks = $mdObj->toMarkdownChunks(target: 512, hardCap: 1024, tok: $this->tokenizer);
 
-        // Chapter 1 + Section 1.1 = 1100 > hardCap
-        // So Chapter 1 alone becomes chunk
-        // Section 1.1 (900) also > hardCap, must split its children
-        $this->assertCount(3, $chunks);
+        // Chapter 1 + Section 1.1 total = 1700 > hardCap
+        // So Chapter 1 alone becomes chunk (200 tokens)
+        // Section 1.1 (700) can't inline any child (would be 1100 > hardCap)
+        // So Section 1.1 direct content becomes one chunk
+        // Subsection 1.1.1 gets recursed (deeper breadcrumb)
+        // Subsection 1.1.2 gets greedy packed (parent breadcrumb)
+        $this->assertCount(4, $chunks);
 
-        // Chunk 1: Just Chapter 1 heading
+        // Chunk 0: Just Chapter 1 heading
         $this->assertEquals(['filename.md', 'Chapter 1'], $chunks[0]->breadcrumb);
         $this->assertStringContainsString('# Chapter 1', $chunks[0]->markdown);
         $this->assertStringNotContainsString('## Section', $chunks[0]->markdown);
 
-        // Chunk 2 & 3: The subsections
-        $this->assertEquals(['filename.md', 'Chapter 1', 'Section 1.1', 'Subsection 1.1.1'], $chunks[1]->breadcrumb);
-        $this->assertEquals(['filename.md', 'Chapter 1', 'Section 1.1', 'Subsection 1.1.2'], $chunks[2]->breadcrumb);
+        // Chunk 1: Section 1.1 direct content only
+        $this->assertEquals(['filename.md', 'Chapter 1', 'Section 1.1'], $chunks[1]->breadcrumb);
+        $this->assertStringContainsString('## Section 1.1', $chunks[1]->markdown);
+
+        // Chunk 2: Subsection 1.1.1 (recursed, deeper breadcrumb)
+        $this->assertEquals(['filename.md', 'Chapter 1', 'Section 1.1', 'Subsection 1.1.1'], $chunks[2]->breadcrumb);
+
+        // Chunk 3: Subsection 1.1.2 (greedy packed with parent breadcrumb)
+        $this->assertEquals(['filename.md', 'Chapter 1', 'Section 1.1'], $chunks[3]->breadcrumb);
     }
 
     /** Test mixed content (headings at different levels) */
@@ -397,12 +408,17 @@ MD;
 
         // Small: 100 -> 1 chunk
         // Medium: 800 -> 1 chunk
-        // Large: 1300 > hardCap -> Large+SectionA = 1000, SubsectionA1 = 300
+        // Large: 1300 > hardCap -> must split
+        //   - Large Chapter (600) -> 1 chunk
+        //   - Section A (700 = 400 + 300) -> 1 chunk (keeps A + A1 together)
         $this->assertCount(4, $chunks);
 
         $this->assertEquals(['filename.md', 'Small Chapter'], $chunks[0]->breadcrumb);
         $this->assertEquals(['filename.md', 'Medium Chapter'], $chunks[1]->breadcrumb);
         $this->assertEquals(['filename.md', 'Large Chapter'], $chunks[2]->breadcrumb);
-        $this->assertEquals(['filename.md', 'Large Chapter', 'Section A', 'Subsection A1'], $chunks[3]->breadcrumb);
+        $this->assertEquals(['filename.md', 'Large Chapter', 'Section A'], $chunks[3]->breadcrumb);
+        // Section A and Subsection A1 stay together (700 tokens < hardCap)
+        $this->assertStringContainsString('## Section A', $chunks[3]->markdown);
+        $this->assertStringContainsString('### Subsection A1', $chunks[3]->markdown);
     }
 }

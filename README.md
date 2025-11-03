@@ -141,13 +141,16 @@ The package uses **hierarchical greedy packing** to maximize semantic coherence:
 1. **Try to fit everything** – if the entire document fits under hardCap, emit one chunk
 2. **Split by top-level headings** – if too large, split by H1s (or H2s if no H1s)
 3. **Greedy pack children** – for each heading, pack as many children as possible while staying under hardCap
-4. **Recursive splitting** – if a heading's subtree is too large, recursively split its children
-5. **Content splitting** – large text blocks, code, and tables split at target boundaries
+4. **Recursive splitting** – if a child doesn't fit, recurse on it with a deeper breadcrumb
+5. **Continue packing** – after recursion, remaining siblings continue greedy packing (minimizes orphan chunks)
+6. **Content splitting** – large text blocks, code, and tables split at target boundaries
 
 ### Key Principles
 
 - **HardCap for hierarchy** – when combining headings, only hardCap matters (maximizes coherence)
 - **Target for content** – long text, code, and tables split at target boundaries (prevents oversized blocks)
+- **All-or-nothing inlining** – child headings are either fully inlined (heading + all descendants) or recursed on separately
+- **Greedy continuation** – after recursing, remaining siblings continue packing to minimize orphan chunks
 - **Breadcrumbs as arrays** – structured path data (`['file.md', 'H1', 'H2']`) for flexible rendering
 - **Headings included** – parent headings appear in chunk markdown, breadcrumb provides full path
 

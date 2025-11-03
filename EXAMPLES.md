@@ -374,7 +374,7 @@ Breadcrumb: ["filename.md", "Chapter 1", "Section 1.3"]
 {200 tokens}
 
 ## Section 1.1
-{900 tokens}
+{300 tokens}
 
 ### Subsection 1.1.1
 {400 tokens}
@@ -384,12 +384,16 @@ Breadcrumb: ["filename.md", "Chapter 1", "Section 1.3"]
 ```
 
 **Token Counts:**
-- Chapter 1 + Section 1.1 total: 1100 tokens (exceeds hardCap)
-- Section 1.1 alone: 900 tokens
+- Chapter 1 direct content: 200 tokens
+- Section 1.1 direct content: 700 tokens
+- Subsection 1.1.1: 400 tokens
+- Subsection 1.1.2: 400 tokens
+- Section 1.1 total: 1500 tokens (700 + 400 + 400, exceeds hardCap)
+- Chapter 1 total: 1700 tokens (exceeds hardCap)
 
 **Config:** target=512, hardCap=1024
 
-**Expected Output:** 3 chunks
+**Expected Output:** 4 chunks
 
 ```
 [Chunk 1] - 200 tokens
@@ -400,7 +404,15 @@ Breadcrumb: ["filename.md", "Chapter 1"]
 ```
 
 ```
-[Chunk 2] - 400 tokens
+[Chunk 2] - 700 tokens
+Breadcrumb: ["filename.md", "Chapter 1", "Section 1.1"]
+
+## Section 1.1
+{700 tokens}
+```
+
+```
+[Chunk 3] - 400 tokens
 Breadcrumb: ["filename.md", "Chapter 1", "Section 1.1", "Subsection 1.1.1"]
 
 ### Subsection 1.1.1
@@ -408,19 +420,21 @@ Breadcrumb: ["filename.md", "Chapter 1", "Section 1.1", "Subsection 1.1.1"]
 ```
 
 ```
-[Chunk 3] - 400 tokens
-Breadcrumb: ["filename.md", "Chapter 1", "Section 1.1", "Subsection 1.1.2"]
+[Chunk 4] - 400 tokens
+Breadcrumb: ["filename.md", "Chapter 1", "Section 1.1"]
 
 ### Subsection 1.1.2
 {400 tokens}
 ```
 
 **Rationale:**
-- Chapter 1 + Section 1.1 = 1100 > hardCap, can't fit
-- Chapter 1 alone (200 tokens) becomes chunk
-- Section 1.1 (900 tokens) exceeds hardCap even alone, must split further
-- Split by H3s: each subsection becomes separate chunk
-- Parent headings (Chapter 1, Section 1.1) are NOT included in child chunks - breadcrumb provides the path
+- Chapter 1 + Section 1.1 total = 1700 > hardCap, can't fit together
+- Chapter 1 alone (200 tokens) becomes one chunk
+- Section 1.1 (700) + Subsection 1.1.1 (400) = 1100 > hardCap, can't inline any child
+- Section 1.1 direct content (700 tokens) becomes one chunk
+- Subsection 1.1.1 gets recursed with deeper breadcrumb
+- After recursing, greedy packing continues: Subsection 1.1.2 (400 tokens) fits in empty accumulator, gets packed with parent breadcrumb
+- This demonstrates greedy packing behavior: remaining siblings after recursion still try to pack together to minimize fragmentation
 
 ---
 
@@ -499,7 +513,8 @@ Breadcrumb: ["filename.md", "First Heading"]
 **Token Counts:**
 - Small Chapter: 100 tokens
 - Medium Chapter: 800 tokens (500 + 300)
-- Large Chapter: 1300 tokens (600 + 400 + 300)
+- Large Chapter: 1300 tokens (600 + 400 + 300) ← exceeds hardCap!
+- Section A subtree: 700 tokens (400 + 300)
 
 **Config:** target=512, hardCap=1024
 
@@ -525,30 +540,32 @@ Breadcrumb: ["filename.md", "Medium Chapter"]
 ```
 
 ```
-[Chunk 3] - 1000 tokens
+[Chunk 3] - 600 tokens
 Breadcrumb: ["filename.md", "Large Chapter"]
 
 # Large Chapter
 {600 tokens}
+```
+
+```
+[Chunk 4] - 700 tokens
+Breadcrumb: ["filename.md", "Large Chapter", "Section A"]
 
 ## Section A
 {400 tokens}
-```
-
-```
-[Chunk 4] - 300 tokens
-Breadcrumb: ["filename.md", "Large Chapter", "Section A", "Subsection A1"]
 
 ### Subsection A1
 {300 tokens}
 ```
 
 **Rationale:**
-- Small Chapter: fits alone
+- Small Chapter: 100 tokens, fits alone
 - Medium Chapter: 800 tokens, fits with its H2
-- Large Chapter: 1300 total exceeds hardCap
-  - Try: Large Chapter + Section A = 1000 tokens ✓ (fits hardCap exactly)
-  - Subsection A1 becomes separate chunk (couldn't fit in parent)
+- Large Chapter: 1300 tokens total exceeds hardCap, must split
+  - Try to inline Section A (700 tokens): 600 + 700 = 1300 > hardCap ✗
+  - Large Chapter alone becomes one chunk (600 tokens)
+  - Recurse on Section A: 700 tokens fits under hardCap, so Section A + Subsection A1 stay together
+  - Algorithm keeps heading and all children together when possible (doesn't split to Subsection A1 level)
 
 ---
 
@@ -838,7 +855,7 @@ Breadcrumb: ["filename.md", "Parent Heading", "Child 2"]
 
 **Config:** target=512, hardCap=1024
 
-**Expected Output:** 4 chunks
+**Expected Output:** 5 chunks
 
 ```
 [Chunk 1] - 700 tokens
@@ -863,18 +880,23 @@ Breadcrumb: ["filename.md", "Section B"]
 ```
 
 ```
-[Chunk 3] - 700 tokens
+[Chunk 3] - 400 tokens
 Breadcrumb: ["filename.md", "Section B", "Subsection B.2"]
 
 ### Subsection B.2
 {400 tokens}
+```
+
+```
+[Chunk 4] - 300 tokens
+Breadcrumb: ["filename.md", "Section B"]
 
 ### Subsection B.3
 {300 tokens}
 ```
 
 ```
-[Chunk 4] - 300 tokens
+[Chunk 5] - 300 tokens
 Breadcrumb: ["filename.md", "Section C"]
 
 ## Section C
@@ -886,12 +908,17 @@ Breadcrumb: ["filename.md", "Section C"]
 
 **Rationale:**
 - **Section A:** 700 tokens ≤ hardCap → keep all together in 1 chunk ✓
-- **Section B:** 1500 tokens > hardCap → must split
-  - Greedily pack: Section B + Subsection B.1 = 800 tokens ≤ hardCap ✓
-  - Subsection B.2 + B.3 = 700 tokens → combine in second chunk ✓
+- **Section B:** 1500 tokens > hardCap → must split with greedy packing
+  - Pack: Section B + Subsection B.1 = 800 tokens ≤ hardCap ✓
+  - B.2 doesn't fit (would be 1200), emit accumulated and recurse on B.2
+  - B.2 (400 tokens) becomes separate chunk with deeper breadcrumb
+  - After recursing, accumulator is reset: try to pack remaining siblings
+  - B.3 (300 tokens) fits in empty accumulator, gets packed with parent breadcrumb
 - **Section C:** 300 tokens ≤ hardCap → keep all together in 1 chunk ✓
 
-**Key Insight:** Splitting decisions are made **per parent heading**, not globally. Section A and C stay intact even though Section B needed splitting.
+**Key Insights:**
+- Splitting decisions are made **per parent heading**, not globally. Section A and C stay intact even though Section B needed splitting.
+- After recursing on a child that doesn't fit, the algorithm continues greedy packing with remaining siblings, which minimizes small orphan chunks.
 
 ---
 

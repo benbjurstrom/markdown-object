@@ -73,12 +73,14 @@ The package follows a **clean separation** between structure and chunking:
 1. **Try to fit everything in one chunk** (breadcrumb = filename only)
 2. If too large, **split by top-level headings** (H1 or H2)
 3. For each heading, **greedily pack children** while total ≤ hardCap
-4. If a heading's subtree is too large, **recursively split** its children
-5. **No depth limit** - inline children at any depth if they fit
+4. If a child doesn't fit, **recurse on it** with deeper breadcrumb
+5. After recursion, **continue greedy packing** with remaining siblings (minimizes orphans)
+6. **No depth limit** - inline children at any depth if they fit
 
-**Key Principle:**
+**Key Principles:**
 - **HardCap for hierarchy** - when combining headings, only hardCap matters
 - **Target for content** - long text blocks, code, tables split at target boundaries
+- **All-or-nothing** - child headings fully inlined (heading + descendants) or recursed
 - **Maximize semantic coherence** by keeping related content together
 
 ---
@@ -237,6 +239,9 @@ def processHeading(heading, breadcrumb):
 
             accumulated = []
             currentTokens = 0
+            # IMPORTANT: Loop continues with remaining siblings!
+            # Remaining children will try to pack with parent breadcrumb,
+            # minimizing orphan chunks (e.g., a small heading at the end)
 
     # Emit any remaining accumulated content
     if accumulated:
@@ -448,6 +453,12 @@ With target=512, hardCap=1024:
 2. **Fewer chunks** - lower embedding costs
 3. **Better retrieval** - complete context in single chunk
 4. **No empty chunks** - parent headings always have content
+5. **Minimizes orphans** - greedy continuation after recursion packs remaining small siblings together
+
+**Key Behaviors:**
+- **All-or-nothing inlining** - child headings are either fully inlined (heading + all descendants) or recursed on separately
+- **Greedy continuation** - after recursing on a child that doesn't fit, remaining siblings continue trying to pack with parent breadcrumb
+- **Multiple chunks, same breadcrumb** - natural result of greedy continuation (e.g., parent + child1, child2-recursed, child3 all share parent breadcrumb)
 
 ### Why HardCap for Hierarchy, Target for Content?
 
@@ -700,11 +711,14 @@ foreach ($mdObj->children as $child) {
 5. **Breadcrumbs as arrays** - `['file.md', 'H1', 'H2']` not rendered strings
 6. **Headings included in chunks** - Parent heading appears in chunk markdown, breadcrumb provides full path
 7. **Recursive algorithm** - Children processed via recursion, not flattening
-8. **Final token counts recalculated** - From rendered markdown for accuracy
-9. **Semantic boundaries matter** - Chunks respect document structure (headings, paragraphs, sentences) not arbitrary character counts
-10. **Position tracking** - Byte/line spans enable source mapping for future features
-11. **Heading token counts are recursive** - Include heading line + sum of all children's tokens
-12. **No template complexity** - Removed in favor of simple breadcrumb arrays
+8. **All-or-nothing child inlining** - Child headings fully inlined (heading + all descendants) or recursed on separately, no partial inlining
+9. **Greedy continuation after recursion** - After recursing on a child, remaining siblings continue trying to pack with parent breadcrumb, minimizing orphan chunks
+10. **Multiple chunks can share breadcrumb** - Natural result of greedy continuation (e.g., parent+child1, child2-recursed, child3)
+11. **Final token counts recalculated** - From rendered markdown for accuracy
+12. **Semantic boundaries matter** - Chunks respect document structure (headings, paragraphs, sentences) not arbitrary character counts
+13. **Position tracking** - Byte/line spans enable source mapping for future features
+14. **Heading token counts are recursive** - Include heading line + sum of all children's tokens
+15. **No template complexity** - Removed in favor of simple breadcrumb arrays
 
 ---
 
