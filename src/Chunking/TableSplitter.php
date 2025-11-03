@@ -20,11 +20,12 @@ final class TableSplitter
      */
     public function split(MarkdownTable $node, Tokenizer $tok, int $target, int $hardCap): array
     {
+        $pos = $node->pos;
         $lines = preg_split("/\R/", trim($node->raw)) ?: [''];
         if (count($lines) < 3) {
             $md = implode("\n", $lines);
 
-            return [new ContentPiece($md, $tok->count($md))];
+            return [new ContentPiece($md, $tok->count($md), $pos)];
         }
 
         $hdr = $lines[0];
@@ -33,10 +34,10 @@ final class TableSplitter
         $pieces = [];
         $buf = $this->repeatHeader ? [$hdr, $div] : [];
 
-        $emit = function (array $buf) use ($tok): ContentPiece {
+        $emit = function (array $buf) use ($tok, $pos): ContentPiece {
             $md = implode("\n", $buf);
 
-            return new ContentPiece($md, $tok->count($md));
+            return new ContentPiece($md, $tok->count($md), $pos);
         };
 
         foreach ($rows as $r) {
@@ -77,7 +78,7 @@ final class TableSplitter
                 $trialMd = implode("\n", $trial);
                 if ($tok->count($trialMd) > $hardCap && ! empty($chunk)) {
                     $chunkMd = implode("\n", $this->repeatHeader ? [$h, $d, ...$chunk] : $chunk);
-                    $safe[] = new ContentPiece($chunkMd, $tok->count($chunkMd));
+                    $safe[] = new ContentPiece($chunkMd, $tok->count($chunkMd), $pos);
                     $chunk = [$row];
                 } else {
                     $chunk[] = $row;
@@ -85,7 +86,7 @@ final class TableSplitter
             }
             if (! empty($chunk)) {
                 $chunkMd = implode("\n", $this->repeatHeader ? [$h, $d, ...$chunk] : $chunk);
-                $safe[] = new ContentPiece($chunkMd, $tok->count($chunkMd));
+                $safe[] = new ContentPiece($chunkMd, $tok->count($chunkMd), $pos);
             }
         }
 

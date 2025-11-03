@@ -6,9 +6,12 @@ final class MarkdownTable extends MarkdownNode
 {
     public function __construct(
         public string $raw,
-        public ?Position $pos = null,
-        public int $tokenCount = 0
-    ) {}
+        ?Position $pos = null,
+        int $tokenCount = 0
+    ) {
+        $this->pos = $pos;
+        $this->tokenCount = $tokenCount;
+    }
 
     /**
      * @return array{__type: class-string<self>, raw: string, pos: array<string, mixed>|null, tokenCount: int}

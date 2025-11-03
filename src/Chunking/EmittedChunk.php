@@ -2,6 +2,8 @@
 
 namespace BenBjurstrom\MarkdownObject\Chunking;
 
+use BenBjurstrom\MarkdownObject\Model\Position;
+
 final class EmittedChunk
 {
     public function __construct(
@@ -9,6 +11,7 @@ final class EmittedChunk
         /** @var list<string> */
         public array $breadcrumb,
         public string $markdown,
-        public int $tokenCount
+        public int $tokenCount,
+        public readonly Position $sourcePosition
     ) {}
 }

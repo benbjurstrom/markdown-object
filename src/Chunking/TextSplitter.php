@@ -17,6 +17,7 @@ final class TextSplitter
     public function split(MarkdownText $node, Tokenizer $tok, int $target, int $hardCap): array
     {
         $raw = $node->raw;
+        $pos = $node->pos;
         $pieces = [];
 
         // Split by paragraphs
@@ -29,7 +30,7 @@ final class TextSplitter
 
             $pTok = $tok->count($p);
             if ($pTok <= $target) {
-                $pieces[] = new ContentPiece($p, $pTok);
+                $pieces[] = new ContentPiece($p, $pTok, $pos);
 
                 continue;
             }
@@ -43,13 +44,13 @@ final class TextSplitter
                 $sTok = $tok->count($s);
                 if ($sTok > $hardCap) {
                     // Fallback: split by characters
-                    $pieces = array_merge($pieces, $this->splitByChars($s, $tok, $target, $hardCap));
+                    $pieces = array_merge($pieces, $this->splitByChars($s, $tok, $target, $hardCap, $pos));
 
                     continue;
                 }
                 if ($sum + $sTok > $target) {
                     if ($buf !== '') {
-                        $pieces[] = new ContentPiece(trim($buf), $tok->count($buf));
+                        $pieces[] = new ContentPiece(trim($buf), $tok->count($buf), $pos);
                     }
                     $buf = $s;
                     $sum = $sTok;
@@ -59,17 +60,17 @@ final class TextSplitter
                 }
             }
             if (trim($buf) !== '') {
-                $pieces[] = new ContentPiece(trim($buf), $tok->count($buf));
+                $pieces[] = new ContentPiece(trim($buf), $tok->count($buf), $pos);
             }
         }
 
-        return $pieces ?: [new ContentPiece($raw, $tok->count($raw))];
+        return $pieces ?: [new ContentPiece($raw, $tok->count($raw), $pos)];
     }
 
     /**
      * @return list<ContentPiece>
      */
-    private function splitByChars(string $s, Tokenizer $tok, int $target, int $hardCap): array
+    private function splitByChars(string $s, Tokenizer $tok, int $target, int $hardCap, ?\BenBjurstrom\MarkdownObject\Model\Position $pos): array
     {
         $out = [];
         $len = \mb_strlen($s);
@@ -90,7 +91,7 @@ final class TextSplitter
                 }
             }
             $piece = \mb_substr($s, $start, $best);
-            $out[] = new ContentPiece($piece, $tok->count($piece));
+            $out[] = new ContentPiece($piece, $tok->count($piece), $pos);
             $start += $best;
         }
 

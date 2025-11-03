@@ -17,16 +17,17 @@ final class CodeSplitter
     public function split(MarkdownCode $node, Tokenizer $tok, int $target, int $hardCap): array
     {
         $info = $node->info ?? '';
+        $pos = $node->pos;
         $lines = preg_split("/\R/", $node->bodyRaw) ?: [''];
         $pieces = [];
         $buf = [];
         $currentPiece = null;
 
-        $wrap = function (array $lines) use ($tok, $info): ContentPiece {
+        $wrap = function (array $lines) use ($tok, $info, $pos): ContentPiece {
             $body = implode("\n", $lines);
             $md = "```{$info}\n".rtrim($body)."\n```";
 
-            return new ContentPiece($md, $tok->count($md));
+            return new ContentPiece($md, $tok->count($md), $pos);
         };
 
         foreach ($lines as $ln) {
@@ -58,7 +59,7 @@ final class CodeSplitter
             $splitLines = preg_split("/\R/", $body ?? '') ?: [''];
             foreach ($splitLines as $single) {
                 $md = "```{$info}\n".rtrim($single)."\n```";
-                $result[] = new ContentPiece($md, $tok->count($md));
+                $result[] = new ContentPiece($md, $tok->count($md), $pos);
             }
         }
 

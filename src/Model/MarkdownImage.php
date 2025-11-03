@@ -9,9 +9,12 @@ final class MarkdownImage extends MarkdownNode
         public string $src,
         public ?string $title = null,
         public string $raw = '',
-        public ?Position $pos = null,
-        public int $tokenCount = 0
-    ) {}
+        ?Position $pos = null,
+        int $tokenCount = 0
+    ) {
+        $this->pos = $pos;
+        $this->tokenCount = $tokenCount;
+    }
 
     /**
      * @return array{
