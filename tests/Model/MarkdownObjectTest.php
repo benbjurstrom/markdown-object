@@ -5,7 +5,6 @@ use BenBjurstrom\MarkdownObject\Model\MarkdownCode;
 use BenBjurstrom\MarkdownObject\Model\MarkdownHeading;
 use BenBjurstrom\MarkdownObject\Model\MarkdownObject;
 use BenBjurstrom\MarkdownObject\Model\MarkdownText;
-use BenBjurstrom\MarkdownObject\Render\ChunkTemplate;
 use League\CommonMark\Environment\Environment;
 use League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension;
 use League\CommonMark\Extension\Table\TableExtension;
@@ -17,6 +16,14 @@ beforeEach(function () {
     $this->env->addExtension(new TableExtension);
     $this->parser = new MarkdownParser($this->env);
     $this->builder = new MarkdownObjectBuilder;
+    // Simple tokenizer for testing - counts string length
+    $this->tokenizer = new class implements \BenBjurstrom\MarkdownObject\Contracts\Tokenizer
+    {
+        public function count(string $text): int
+        {
+            return strlen($text);
+        }
+    };
 });
 
 it('serializes to JSON with correct structure', function () {
@@ -31,7 +38,7 @@ More text.
 MD;
 
     $document = $this->parser->parse($markdown);
-    $mdObj = $this->builder->build($document, 'test.md', $markdown);
+    $mdObj = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     $json = $mdObj->toJson();
 
@@ -47,7 +54,7 @@ it('serializes to pretty JSON when flag provided', function () {
 Text.';
 
     $document = $this->parser->parse($markdown);
-    $mdObj = $this->builder->build($document, 'test.md', $markdown);
+    $mdObj = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     $json = $mdObj->toJson(JSON_PRETTY_PRINT);
 
@@ -64,7 +71,7 @@ Paragraph text.
 MD;
 
     $document = $this->parser->parse($markdown);
-    $original = $this->builder->build($document, 'test.md', $markdown);
+    $original = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     $json = $original->toJson();
     $restored = MarkdownObject::fromJson($json);
@@ -89,7 +96,7 @@ Content under H2.
 MD;
 
     $document = $this->parser->parse($markdown);
-    $original = $this->builder->build($document, 'doc.md', $markdown);
+    $original = $this->builder->build($document, 'doc.md', $markdown, $this->tokenizer);
 
     $json = $original->toJson();
     $restored = MarkdownObject::fromJson($json);
@@ -132,7 +139,7 @@ code
 MD;
 
     $document = $this->parser->parse($markdown);
-    $original = $this->builder->build($document, 'test.md', $markdown);
+    $original = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     $json = $original->toJson();
     $restored = MarkdownObject::fromJson($json);
@@ -152,7 +159,7 @@ Text.
 MD;
 
     $document = $this->parser->parse($markdown);
-    $original = $this->builder->build($document, 'test.md', $markdown);
+    $original = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     $json = $original->toJson();
     $restored = MarkdownObject::fromJson($json);
@@ -169,7 +176,7 @@ it('handles empty children array in JSON', function () {
     $markdown = '# Empty Heading';
 
     $document = $this->parser->parse($markdown);
-    $original = $this->builder->build($document, 'test.md', $markdown);
+    $original = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     $json = $original->toJson();
     $restored = MarkdownObject::fromJson($json);
@@ -190,13 +197,13 @@ More content here.
 MD;
 
     $document = $this->parser->parse($markdown);
-    $mdObj = $this->builder->build($document, 'guide.md', $markdown);
+    $mdObj = $this->builder->build($document, 'guide.md', $markdown, $this->tokenizer);
 
     $chunks = $mdObj->toMarkdownChunks();
 
     expect($chunks)->toBeArray()
         ->and($chunks)->not->toBeEmpty()
-        ->and($chunks[0])->toBeInstanceOf(\BenBjurstrom\MarkdownObject\Render\EmittedChunk::class)
+        ->and($chunks[0])->toBeInstanceOf(\BenBjurstrom\MarkdownObject\Chunking\EmittedChunk::class)
         ->and($chunks[0]->id)->not->toBeNull()
         ->and($chunks[0]->tokenCount)->toBeGreaterThan(0)
         ->and($chunks[0]->markdown)->toBeString();
@@ -214,16 +221,16 @@ More content.
 MD;
 
     $document = $this->parser->parse($markdown);
-    $mdObj = $this->builder->build($document, 'docs.md', $markdown);
+    $mdObj = $this->builder->build($document, 'docs.md', $markdown, $this->tokenizer);
 
     $chunks = $mdObj->toMarkdownChunks();
 
-    // Find a chunk with breadcrumbs
+    // Check that breadcrumb array contains the expected path
     $found = false;
     foreach ($chunks as $chunk) {
-        if (str_contains($chunk->markdown, '> Path:')) {
+        if (! empty($chunk->breadcrumb) && count($chunk->breadcrumb) > 1) {
             $found = true;
-            expect($chunk->markdown)->toContain('docs.md');
+            expect($chunk->breadcrumb)->toContain('docs.md');
             break;
         }
     }
@@ -243,7 +250,7 @@ And yet another paragraph to make sure we have enough content for multiple chunk
 MD;
 
     $document = $this->parser->parse($markdown);
-    $mdObj = $this->builder->build($document, 'test.md', $markdown);
+    $mdObj = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     $chunks = $mdObj->toMarkdownChunks(target: 50, hardCap: 100);
 
@@ -254,30 +261,6 @@ MD;
     foreach ($chunks as $chunk) {
         expect($chunk->tokenCount)->toBeLessThanOrEqual(100);
     }
-});
-
-it('generates chunks with custom template', function () {
-    $markdown = <<<'MD'
-# Heading
-
-Content here.
-MD;
-
-    $document = $this->parser->parse($markdown);
-    $mdObj = $this->builder->build($document, 'custom.md', $markdown);
-
-    $template = new ChunkTemplate(
-        breadcrumbFmt: '### Location: %s',
-        breadcrumbJoin: ' > ',
-        includeFilename: true,
-        headingOnce: true
-    );
-
-    $chunks = $mdObj->toMarkdownChunks(tpl: $template);
-
-    expect($chunks)->not->toBeEmpty();
-    $firstChunk = $chunks[0];
-    expect($firstChunk->markdown)->toContain('### Location:');
 });
 
 it('assigns sequential IDs to chunks', function () {
@@ -296,7 +279,7 @@ Content 3.
 MD;
 
     $document = $this->parser->parse($markdown);
-    $mdObj = $this->builder->build($document, 'test.md', $markdown);
+    $mdObj = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     $chunks = $mdObj->toMarkdownChunks();
 
@@ -322,7 +305,7 @@ Fourth paragraph with additional content for chunking purposes and more words to
 MD;
 
     $document = $this->parser->parse($markdown);
-    $mdObj = $this->builder->build($document, 'test.md', $markdown);
+    $mdObj = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     // Use small target to force multiple chunks
     $chunks = $mdObj->toMarkdownChunks(target: 50, hardCap: 100);
@@ -346,35 +329,38 @@ it('preserves breadcrumb hierarchy in chunks', function () {
     $markdown = <<<'MD'
 # Chapter 1
 
-Intro.
+This is a long introduction paragraph with lots of content to ensure we exceed the hard cap and force chunking into multiple pieces for testing purposes.
 
 ## Section 1.1
 
-Details.
+This is more detailed content under section 1.1 with additional text to make it substantial enough for chunking behavior testing.
 
 ### Subsection 1.1.1
 
-Deep content.
+This is deep content under subsection 1.1.1 with even more text to ensure proper hierarchical breadcrumb tracking across multiple chunk levels.
 MD;
 
     $document = $this->parser->parse($markdown);
-    $mdObj = $this->builder->build($document, 'book.md', $markdown);
+    $mdObj = $this->builder->build($document, 'book.md', $markdown, $this->tokenizer);
 
-    $chunks = $mdObj->toMarkdownChunks();
+    // Use small limits to force splitting
+    $chunks = $mdObj->toMarkdownChunks(target: 50, hardCap: 150);
 
-    // Find deepest chunk
-    $deepestChunk = null;
+    // Should have chunks
+    expect($chunks)->not->toBeEmpty();
+
+    // Check that at least one chunk has nested breadcrumbs
+    $foundNestedBreadcrumb = false;
     foreach ($chunks as $chunk) {
-        if (count($chunk->breadcrumb) > 3) { // filename + H1 + H2 + H3
-            $deepestChunk = $chunk;
-            break;
+        expect($chunk->breadcrumb)->toContain('book.md');
+
+        if (count($chunk->breadcrumb) > 1) {
+            $foundNestedBreadcrumb = true;
+            // Verify breadcrumb hierarchy is preserved
+            expect($chunk->breadcrumb[0])->toBe('book.md');
         }
     }
 
-    if ($deepestChunk) {
-        expect($deepestChunk->breadcrumb)->toContain('book.md')
-            ->and($deepestChunk->breadcrumb)->toContain('Chapter 1')
-            ->and($deepestChunk->breadcrumb)->toContain('Section 1.1')
-            ->and($deepestChunk->breadcrumb)->toContain('Subsection 1.1.1');
-    }
+    // At least one chunk should have nested breadcrumbs
+    expect($foundNestedBreadcrumb)->toBeTrue();
 });

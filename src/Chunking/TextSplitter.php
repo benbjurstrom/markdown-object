@@ -1,19 +1,23 @@
 <?php
 
-namespace BenBjurstrom\MarkdownObject\Planning;
+namespace BenBjurstrom\MarkdownObject\Chunking;
 
 use BenBjurstrom\MarkdownObject\Contracts\Tokenizer;
 use BenBjurstrom\MarkdownObject\Model\MarkdownText;
 
-final class TextSplitter implements Splitter
+/**
+ * Splits text blocks at target boundaries.
+ * Strategy: paragraphs → sentences → character fallback
+ */
+final class TextSplitter
 {
-    public function split(object $node, Tokenizer $tok, int $target, int $hardCap): array
+    /**
+     * @return list<ContentPiece>
+     */
+    public function split(MarkdownText $node, Tokenizer $tok, int $target, int $hardCap): array
     {
-        if (! $node instanceof MarkdownText) {
-            return [];
-        }
         $raw = $node->raw;
-        $units = [];
+        $pieces = [];
 
         // Split by paragraphs
         $paras = preg_split("/\n{2,}/", trim($raw)) ?: [$raw];
@@ -25,7 +29,7 @@ final class TextSplitter implements Splitter
 
             $pTok = $tok->count($p);
             if ($pTok <= $target) {
-                $units[] = new Unit(UnitKind::Text, $p, $pTok);
+                $pieces[] = new ContentPiece($p, $pTok);
 
                 continue;
             }
@@ -38,14 +42,14 @@ final class TextSplitter implements Splitter
             foreach ($sentences as $s) {
                 $sTok = $tok->count($s);
                 if ($sTok > $hardCap) {
-                    // Fallback: split by characters (grapheme clusters would be better; use mb_substr)
-                    $units = array_merge($units, $this->splitByChars($s, $tok, $target, $hardCap));
+                    // Fallback: split by characters
+                    $pieces = array_merge($pieces, $this->splitByChars($s, $tok, $target, $hardCap));
 
                     continue;
                 }
                 if ($sum + $sTok > $target) {
                     if ($buf !== '') {
-                        $units[] = new Unit(UnitKind::Text, trim($buf), $tok->count($buf));
+                        $pieces[] = new ContentPiece(trim($buf), $tok->count($buf));
                     }
                     $buf = $s;
                     $sum = $sTok;
@@ -55,14 +59,16 @@ final class TextSplitter implements Splitter
                 }
             }
             if (trim($buf) !== '') {
-                $units[] = new Unit(UnitKind::Text, trim($buf), $tok->count($buf));
+                $pieces[] = new ContentPiece(trim($buf), $tok->count($buf));
             }
         }
 
-        return $units ?: [new Unit(UnitKind::Text, $raw, $tok->count($raw))];
+        return $pieces ?: [new ContentPiece($raw, $tok->count($raw))];
     }
 
-    /** @return list<Unit> */
+    /**
+     * @return list<ContentPiece>
+     */
     private function splitByChars(string $s, Tokenizer $tok, int $target, int $hardCap): array
     {
         $out = [];
@@ -70,7 +76,7 @@ final class TextSplitter implements Splitter
         $start = 0;
         while ($start < $len) {
             $low = 1;
-            $high = min(2000, $len - $start); // step search window
+            $high = min(2000, $len - $start);
             $best = 1;
             while ($low <= $high) {
                 $mid = intdiv($low + $high, 2);
@@ -84,7 +90,7 @@ final class TextSplitter implements Splitter
                 }
             }
             $piece = \mb_substr($s, $start, $best);
-            $out[] = new Unit(UnitKind::Text, $piece, $tok->count($piece));
+            $out[] = new ContentPiece($piece, $tok->count($piece));
             $start += $best;
         }
 

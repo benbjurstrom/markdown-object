@@ -9,7 +9,8 @@ final class MarkdownImage extends MarkdownNode
         public string $src,
         public ?string $title = null,
         public string $raw = '',
-        public ?Position $pos = null
+        public ?Position $pos = null,
+        public int $tokenCount = 0
     ) {}
 
     /**
@@ -19,7 +20,8 @@ final class MarkdownImage extends MarkdownNode
      *     src: string,
      *     title: string|null,
      *     raw: string,
-     *     pos: array<string, mixed>|null
+     *     pos: array<string, mixed>|null,
+     *     tokenCount: int
      * }
      */
     protected function serializePayload(): array
@@ -31,6 +33,7 @@ final class MarkdownImage extends MarkdownNode
             'title' => $this->title,
             'raw' => $this->raw,
             'pos' => $this->pos?->toArray(),
+            'tokenCount' => $this->tokenCount,
         ];
     }
 
@@ -44,7 +47,8 @@ final class MarkdownImage extends MarkdownNode
         $title = self::expectNullableString($data, 'title');
         $raw = self::expectString($data, 'raw');
         $pos = Position::fromArray(self::expectNullableArray($data, 'pos'));
+        $tokenCount = self::expectInt($data, 'tokenCount');
 
-        return new self($alt, $src, $title, $raw, $pos);
+        return new self($alt, $src, $title, $raw, $pos, $tokenCount);
     }
 }

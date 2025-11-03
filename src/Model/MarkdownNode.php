@@ -6,6 +6,8 @@ use InvalidArgumentException;
 
 abstract class MarkdownNode
 {
+    public int $tokenCount = 0;
+
     /**
      * @return array<string, mixed>
      */
@@ -100,6 +102,23 @@ abstract class MarkdownNode
         $value = $data[$key] ?? null;
         if (! is_int($value)) {
             throw new InvalidArgumentException(sprintf('%s must be an integer.', $key));
+        }
+
+        return $value;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    final protected static function expectNullableInt(array $data, string $key): ?int
+    {
+        if (! array_key_exists($key, $data)) {
+            return null;
+        }
+
+        $value = $data[$key];
+        if ($value !== null && ! is_int($value)) {
+            throw new InvalidArgumentException(sprintf('%s must be an integer or null.', $key));
         }
 
         return $value;
