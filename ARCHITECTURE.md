@@ -32,9 +32,9 @@ This package transforms Markdown documents into **structured object models** and
 - ✅ Preserves Markdown structure with proper heading nesting
 - ✅ Chunks at semantic boundaries (headings, paragraphs, sentences)
 - ✅ Filename-first breadcrumbs (`docs.md › Chapter 1 › Section 1.1`)
-- ✅ Accurate token counting using tiktoken
+- ✅ Accurate token counting using tiktoken (required at build time and during chunking)
 - ✅ Configurable target/hard-cap limits with smart packing
-- ✅ JSON serialization for persistence
+- ✅ JSON serialization for persistence (includes token counts)
 - ✅ Position tracking (byte/line spans) for source mapping
 
 ---
@@ -155,8 +155,16 @@ Transforms the CommonMark Document into our structured model:
 2. Convert nodes to model classes
 3. Extract raw content slices
 4. Track positions (byte/line spans)
+5. **Calculate token counts** (tokenizer required)
 
-**Note:** Does NOT calculate token counts at this stage.
+**Token Counting (Required):**
+- Must pass a `Tokenizer` instance to `build()`
+- Each node gets a `tokenCount` property (int) representing its markdown representation
+- For leaf nodes (text, code, tables, images): Count tokens of raw/reconstructed markdown
+- For code blocks: Count full fenced block (```` ```lang\nbody\n``` ````)
+- For headings: Count heading line (`## Heading`) + sum of all children recursively
+- For root: Sum of all top-level children
+- Token counts are always calculated and available
 
 **Output:** A nested MarkdownObject tree:
 ```
@@ -256,18 +264,28 @@ Example output structure:
 
 ### 1. MarkdownObjectBuilder (`src/Build/MarkdownObjectBuilder.php`)
 
-**Responsibility:** Parse CommonMark Document → MarkdownObject tree
+**Responsibility:** Parse CommonMark Document → MarkdownObject tree with token counting
 
 **Key Methods:**
-- `build(Document, filename, source)` - Main entry point
-- `consumeHeading()` - Recursively nests headings by level
-- `toLeaf()` - Converts CommonMark nodes → model classes
+- `build(Document, filename, source, Tokenizer)` - Main entry point (tokenizer required)
+- `consumeHeading()` - Recursively nests headings by level, calculates token counts
+- `toLeaf()` - Converts CommonMark nodes → model classes, calculates token counts for leaf nodes
 - `inlineText()` - Extracts plain text (strips formatting) for headings (breadcrumbs) and images (alt text)
+
+**Token Counting Strategy:**
+- **Leaf nodes** (calculated immediately when created):
+  - Text/Table/Image: Count tokens of `raw` property
+  - Code blocks: Reconstruct full fenced block then count
+- **Headings** (calculated after all children consumed):
+  - Heading line tokens + sum of all children recursively
+- **Root** (calculated after all children built):
+  - Sum of all top-level children
 
 **Important:**
 - Preserves inline formatting in `raw` properties (for chunks)
 - Extracts plain text for headings (`text` property for breadcrumbs) and images (`alt` property for accessibility)
 - Example: Heading with `# **bold** text` → `text: "bold text"` (breadcrumbs), `rawLine: "# **bold** text"` (chunks)
+- Token counts represent the markdown form that would be serialized back to markdown
 
 ### 2. Model Classes (`src/Model/`)
 
@@ -279,21 +297,27 @@ Example output structure:
 - Type-safe polymorphic hydration via `__type` field in serialized data
 
 **Node types:**
-- `MarkdownObject` - Root, orchestrates `toMarkdownChunks()`
-- `MarkdownHeading` - Has `children[]`, `level`, `text`, `rawLine`
-- `MarkdownText` - Has `raw` content
-- `MarkdownCode` - Stores `bodyRaw` (NO fences), `info` (language)
-- `MarkdownImage` - Has `alt`, `src`, `title`, `raw`
-- `MarkdownTable` - Has `raw` markdown
+- `MarkdownObject` - Root, orchestrates `toMarkdownChunks()`, has `tokenCount: int`
+- `MarkdownHeading` - Has `children[]`, `level`, `text`, `rawLine`, `tokenCount: int`
+- `MarkdownText` - Has `raw` content, `tokenCount: int`
+- `MarkdownCode` - Stores `bodyRaw` (NO fences), `info` (language), `tokenCount: int`
+- `MarkdownImage` - Has `alt`, `src`, `title`, `raw`, `tokenCount: int`
+- `MarkdownTable` - Has `raw` markdown, `tokenCount: int`
 
 **MarkdownNode base class provides:**
 - `serialize()` - Final method that adds `__type` field for polymorphic deserialization
 - `serializePayload()` - Abstract method each subclass implements
 - `deserialize()` - Abstract static method for type-safe reconstruction
 - `hydrate()` - Polymorphic factory method using `__type` field
-- Helper methods: `expectString()`, `expectNullableString()`, `expectInt()`, `expectNullableArray()`, `assertStringKeys()`
+- Helper methods: `expectString()`, `expectNullableString()`, `expectInt()`, `expectNullableInt()`, `expectNullableArray()`, `assertStringKeys()`
 
-**Critical:** NO `token_count` property on models. Tokens are calculated during splitting.
+**Token Counts on Models:**
+- All model classes have a required `int $tokenCount` property (inherited from `MarkdownNode`)
+- Always calculated during building (tokenizer is required)
+- Represents tokens in the node's markdown representation (what you'd get if serializing back to markdown)
+- For headings, includes the heading line + all children recursively
+- Always serialized/deserialized with JSON
+- Separate from Unit tokens (which include wrapper overhead like breadcrumbs)
 
 ### 3. SectionPlanner (`src/Planning/SectionPlanner.php`)
 
@@ -400,43 +424,53 @@ function renderSectionChunk(section, units, range) {
 
 ## Design Decisions
 
-### Why NO token_count on Model Classes?
+### Token Counting: Build-Time vs. Chunking-Time
 
-**Decision:** Model nodes don't have token counts. Only Units have tokens.
+**Decision:** Model nodes have REQUIRED token counts (non-nullable int) calculated at build time, representing their base markdown representation. Units also have REQUIRED token counts calculated during chunking, representing their final rendered form with wrappers.
 
-**Concrete Example:**
-```php
-// Model: MarkdownCode
-bodyRaw = "function foo() {}\nreturn bar;"  // 2 lines, ~10 tokens
+**Two Different Token Counts:**
 
-// Unit: After CodeSplitter transformation
-markdown = "```php\nfunction foo() {}\nreturn bar;\n```"  // ~16 tokens
+#### Build-Time Token Counts (on Models)
+- **When**: Always calculated during `build()` (tokenizer required)
+- **What**: Tokens in the node's markdown representation as-is
+- **Purpose**: Intrinsic document metrics, analysis, debugging, or pre-chunking optimization
+- **Example**:
+  ```php
+  // MarkdownCode model
+  bodyRaw = "function foo() {}\nreturn bar;"
+  tokenCount = 26  // Tokens in: ```php\nfunction foo() {}\nreturn bar;\n```
+  ```
 
-// Difference: Fence wrappers add ~6 tokens
-```
+#### Chunking-Time Token Counts (on Units)
+- **When**: Calculated during splitting/rendering
+- **What**: Tokens in final rendered chunk (with breadcrumbs, repeated headers, etc.)
+- **Purpose**: Actual chunking decisions, budget calculations
+- **Example**:
+  ```php
+  // Unit after splitting + breadcrumb added
+  markdown = "> Path: file.md › H1\n\n```php\nfunction foo() {}\nreturn bar;\n```"
+  tokens = 38  // Includes breadcrumb overhead (~12 tokens)
+  ```
 
-If we stored `token_count = 10` on the model, it would be **wrong** because the final rendered form has 16 tokens.
+**Why Both?**
 
-**Reasoning:**
-1. **Content transforms during splitting:**
-   - Code: Adds fences (````lang\n...\n````) → +6 tokens
-   - Tables: Repeats headers in each split → +variable tokens
-   - Text: Splits by sentences, may add whitespace → token count per unit varies
-   - Pre-calculated counts would be incorrect
+1. **Build-time counts are stable:**
+   - Don't change based on chunking context (breadcrumb depth, table header repetition)
+   - Always serialized with JSON
+   - Useful for understanding document size before chunking
+   - Enable pre-chunking analysis and optimization
 
-2. **Budget varies by section:**
-   - Breadcrumb tokens differ by depth: `file.md` (2 tokens) vs `file.md › Ch1 › Sec1.1` (8 tokens)
-   - Available budget = target - breadcrumb_tokens
-   - Can't know budget until section context is established
+2. **Chunking-time counts are contextual:**
+   - Include breadcrumb overhead (varies by section depth)
+   - Include table header repetition (varies by split)
+   - Include fence wrappers for code (always added by splitter)
+   - **This is what actually matters for budget decisions**
 
-3. **Tokens calculated once, at the right time:**
-   - During splitting, when content is in final rendered form
-   - Avoids recalculation or invalidation
-   - Single source of truth
+3. **Separation of concerns:**
+   - **Models** = document structure + intrinsic token cost
+   - **Units** = rendering strategy + contextual token cost
 
-4. **Separation of concerns:**
-   - **Models** = document structure (what exists)
-   - **Units** = rendering strategy (how to chunk it) + tokens (how big it is)
+**Key Insight:** Both token counts are *required* but serve different purposes. Build-time counts represent the document as-is. Chunking-time counts represent the document as-chunked with wrappers.
 
 ### Why Three Phases (Build, Plan, Render)?
 
@@ -547,11 +581,13 @@ tests/
 
 ### Test Coverage
 
-**Build Tests:** Focus on structure
+**Build Tests:** Focus on structure and token counting
 - Heading nesting
 - Block type recognition
 - Position tracking
 - Raw content preservation
+- Token count calculation (with and without tokenizer)
+- Recursive token aggregation for headings
 
 **Model Tests:** Focus on behavior
 - JSON serialization/deserialization
@@ -605,9 +641,11 @@ $parser = new MarkdownParser($env);
 $markdown = file_get_contents('docs.md');
 $document = $parser->parse($markdown);
 
-// 2. Build MarkdownObject
+// 2. Build MarkdownObject (with token counting)
 $builder = new MarkdownObjectBuilder();
-$mdObj = $builder->build($document, 'docs.md', $markdown);
+$tokenizer = \BenBjurstrom\MarkdownObject\Tokenizer\TikTokenizer::forModel('gpt-3.5-turbo');
+$mdObj = $builder->build($document, 'docs.md', $markdown, $tokenizer);
+// Note: Tokenizer is required. Token counts always calculated.
 
 // 3. Generate Chunks
 $chunks = $mdObj->toMarkdownChunks(
@@ -657,16 +695,18 @@ $mdObj = \BenBjurstrom\MarkdownObject\Model\MarkdownObject::fromJson($json);
 
 ## Key Takeaways for Coding Agents
 
-1. **Token counts live on Units, not models** - Models are structure; Units have tokens because content transforms during splitting
-2. **Wrappers add tokens** - Code fences (~6 tokens), table headers (variable) added during splitting, not stored in models
-3. **Greedy algorithms throughout** - TextSplitter groups sentences; Packer accumulates units to target
-4. **Final stretch behavior** - Last unit can exceed target (up to hardCap) to prevent tiny trailing chunks
-5. **Three-phase architecture** - Build (structure), Plan (strategy), Render (presentation) - each testable independently
-6. **Breadcrumb tokens vary by depth** - `file.md` vs `file.md › H1 › H2` - subtracted per-section from budget
-7. **Plain text extraction is selective** - Only headings (for breadcrumbs) and images (for alt text); everything else stays raw
-8. **Semantic boundaries matter** - Chunks respect document structure (headings, paragraphs, sentences) not arbitrary character counts
-9. **Early threshold (90%)** - Single units ≥ threshold emit immediately; prevents under-filled chunks
-10. **Position tracking** - Byte/line spans enable source mapping for future features
+1. **Two levels of token counting** - Build-time (required, on models, stable) vs. Chunking-time (required, on Units, contextual with wrappers)
+2. **Build-time tokens always calculated** - Tokenizer is required for `build()`; represents intrinsic markdown token cost; always serializable
+3. **Chunking-time tokens include wrappers** - Code fences (~6 tokens), breadcrumbs (variable by depth), table headers (repeated) - this drives packing
+4. **Greedy algorithms throughout** - TextSplitter groups sentences; Packer accumulates units to target
+5. **Final stretch behavior** - Last unit can exceed target (up to hardCap) to prevent tiny trailing chunks
+6. **Three-phase architecture** - Build (structure + tokens), Plan (strategy), Render (presentation) - each testable independently
+7. **Breadcrumb tokens vary by depth** - `file.md` vs `file.md › H1 › H2` - subtracted per-section from budget at chunking time
+8. **Plain text extraction is selective** - Only headings (for breadcrumbs) and images (for alt text); everything else stays raw
+9. **Semantic boundaries matter** - Chunks respect document structure (headings, paragraphs, sentences) not arbitrary character counts
+10. **Early threshold (90%)** - Single units ≥ threshold emit immediately; prevents under-filled chunks
+11. **Position tracking** - Byte/line spans enable source mapping for future features
+12. **Heading token counts are recursive** - Include heading line + sum of all children's tokens (including nested headings)
 
 ---
 
@@ -731,15 +771,16 @@ i=3: unit=400, sum=150
 
 This architecture guide is current as of the implementation that:
 - Uses `MarkdownNode` abstract base class with centralized serialization/deserialization
-- Removed `token_count` from model classes (tokens only on Units)
+- Added optional `tokenCount` property to all model classes (nullable, calculated at build time)
+- Two-level token counting: build-time (models) and chunking-time (Units)
 - Uses PHP 8.2+ features (readonly classes, enums, promoted properties)
 - Integrates League CommonMark 2.7+ and Yethee Tiktoken
 - Includes comprehensive test coverage across all three phases:
-  - Build (13 tests) - Parser correctness
+  - Build (16 tests) - Parser correctness, token counting
   - Planning (33 tests) - SectionPlanner, UnitPlanner, Packer
   - Render (15 tests) - Chunk assembly and formatting
 - Type-safe polymorphic deserialization via `__type` field
 
-**Test Status:** 81 tests passing - PHPStan level 10 clean
+**Test Status:** 80 tests passing - PHPStan level 10 clean
 
 For implementation details, see the code. For rationale, see "Design Decisions" above.

@@ -13,7 +13,8 @@ final class MarkdownHeading extends MarkdownNode
         public int $level,
         public string $text,
         public ?string $rawLine = null,
-        public ?Position $pos = null
+        public ?Position $pos = null,
+        public int $tokenCount = 0
     ) {}
 
     /**
@@ -23,6 +24,7 @@ final class MarkdownHeading extends MarkdownNode
      *     text: string,
      *     rawLine: string|null,
      *     pos: array<string, mixed>|null,
+     *     tokenCount: int,
      *     children: list<array<string, mixed>>
      * }
      */
@@ -39,6 +41,7 @@ final class MarkdownHeading extends MarkdownNode
             'text' => $this->text,
             'rawLine' => $this->rawLine,
             'pos' => $this->pos?->toArray(),
+            'tokenCount' => $this->tokenCount,
             'children' => $children,
         ];
     }
@@ -52,6 +55,7 @@ final class MarkdownHeading extends MarkdownNode
         $text = self::expectString($data, 'text');
         $rawLine = self::expectNullableString($data, 'rawLine');
         $pos = Position::fromArray(self::expectNullableArray($data, 'pos'));
+        $tokenCount = self::expectInt($data, 'tokenCount');
 
         $childrenData = $data['children'] ?? [];
         if (! is_array($childrenData)) {
@@ -70,7 +74,7 @@ final class MarkdownHeading extends MarkdownNode
             $children[] = self::hydrate($child);
         }
 
-        $heading = new self($level, $text, $rawLine, $pos);
+        $heading = new self($level, $text, $rawLine, $pos, $tokenCount);
         $heading->children = $children;
 
         return $heading;

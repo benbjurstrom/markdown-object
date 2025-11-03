@@ -4,10 +4,14 @@ namespace BenBjurstrom\MarkdownObject\Model;
 
 final class MarkdownTable extends MarkdownNode
 {
-    public function __construct(public string $raw, public ?Position $pos = null) {}
+    public function __construct(
+        public string $raw,
+        public ?Position $pos = null,
+        public int $tokenCount = 0
+    ) {}
 
     /**
-     * @return array{__type: class-string<self>, raw: string, pos: array<string, mixed>|null}
+     * @return array{__type: class-string<self>, raw: string, pos: array<string, mixed>|null, tokenCount: int}
      */
     protected function serializePayload(): array
     {
@@ -15,6 +19,7 @@ final class MarkdownTable extends MarkdownNode
             '__type' => self::class,
             'raw' => $this->raw,
             'pos' => $this->pos?->toArray(),
+            'tokenCount' => $this->tokenCount,
         ];
     }
 
@@ -25,7 +30,8 @@ final class MarkdownTable extends MarkdownNode
     {
         $raw = self::expectString($data, 'raw');
         $pos = Position::fromArray(self::expectNullableArray($data, 'pos'));
+        $tokenCount = self::expectInt($data, 'tokenCount');
 
-        return new self($raw, $pos);
+        return new self($raw, $pos, $tokenCount);
     }
 }

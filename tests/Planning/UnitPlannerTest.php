@@ -39,10 +39,15 @@ function getSectionBlocks(string $markdown): Section
     $env->addExtension(new TableExtension);
     $parser = new MarkdownParser($env);
     $builder = new MarkdownObjectBuilder;
+    $tokenizer = new class implements \BenBjurstrom\MarkdownObject\Contracts\Tokenizer {
+        public function count(string $text): int {
+            return strlen($text);
+        }
+    };
     $sectionPlanner = new SectionPlanner;
 
     $document = $parser->parse($markdown);
-    $mdObj = $builder->build($document, 'test.md', $markdown);
+    $mdObj = $builder->build($document, 'test.md', $markdown, $tokenizer);
     $sections = $sectionPlanner->plan($mdObj);
 
     return $sections[0];
@@ -164,10 +169,15 @@ MD;
     $env->addExtension(new TableExtension);
     $parser = new MarkdownParser($env);
     $builder = new MarkdownObjectBuilder;
+    $tokenizer = new class implements \BenBjurstrom\MarkdownObject\Contracts\Tokenizer {
+        public function count(string $text): int {
+            return strlen($text);
+        }
+    };
     $sectionPlanner = new SectionPlanner;
 
     $document = $parser->parse($markdown);
-    $mdObj = $builder->build($document, 'test.md', $markdown);
+    $mdObj = $builder->build($document, 'test.md', $markdown, $tokenizer);
     $sections = $sectionPlanner->plan($mdObj);
 
     $units = $this->planner->planUnits($sections[0], $this->splitters, $this->tokenizer, target: 100, hardCap: 200);

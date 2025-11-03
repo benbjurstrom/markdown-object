@@ -27,10 +27,15 @@ function buildMarkdownObject(string $markdown, string $filename = 'test.md'): Ma
     $env->addExtension(new TableExtension);
     $parser = new MarkdownParser($env);
     $builder = new MarkdownObjectBuilder;
+    $tokenizer = new class implements \BenBjurstrom\MarkdownObject\Contracts\Tokenizer {
+        public function count(string $text): int {
+            return strlen($text);
+        }
+    };
 
     $document = $parser->parse($markdown);
 
-    return $builder->build($document, $filename, $markdown);
+    return $builder->build($document, $filename, $markdown, $tokenizer);
 }
 
 it('handles preamble content before first heading', function () {

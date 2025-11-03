@@ -20,7 +20,8 @@ final class MarkdownObject implements \JsonSerializable
     /** @param list<MarkdownNode> $children */
     public function __construct(
         public string $filename,
-        public array $children = []
+        public array $children = [],
+        public int $tokenCount = 0
     ) {}
 
     public function jsonSerialize(): mixed
@@ -28,6 +29,7 @@ final class MarkdownObject implements \JsonSerializable
         return [
             'schemaVersion' => 1,
             'filename' => $this->filename,
+            'tokenCount' => $this->tokenCount,
             'children' => array_map(
                 static function (MarkdownNode $child): array {
                     return $child->serialize();
@@ -57,6 +59,9 @@ final class MarkdownObject implements \JsonSerializable
         $filenameValue = $data['filename'] ?? null;
         $filename = is_string($filenameValue) ? $filenameValue : '(unknown)';
 
+        $tokenCountValue = $data['tokenCount'] ?? null;
+        $tokenCount = is_int($tokenCountValue) ? $tokenCountValue : 0;
+
         $childrenValue = $data['children'] ?? null;
         if ($childrenValue !== null && ! is_array($childrenValue)) {
             throw new InvalidArgumentException('Markdown object children must be an array when provided.');
@@ -65,7 +70,7 @@ final class MarkdownObject implements \JsonSerializable
         /** @var array<int|string, mixed> $childrenArray */
         $childrenArray = is_array($childrenValue) ? $childrenValue : [];
 
-        $obj = new self($filename);
+        $obj = new self($filename, [], $tokenCount);
         $obj->children = self::deserializeNodes($childrenArray);
 
         return $obj;

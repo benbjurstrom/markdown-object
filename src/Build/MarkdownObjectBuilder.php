@@ -2,6 +2,7 @@
 
 namespace BenBjurstrom\MarkdownObject\Build;
 
+use BenBjurstrom\MarkdownObject\Contracts\Tokenizer;
 use BenBjurstrom\MarkdownObject\Model\ByteSpan;
 use BenBjurstrom\MarkdownObject\Model\LineSpan;
 use BenBjurstrom\MarkdownObject\Model\MarkdownCode;
@@ -30,7 +31,7 @@ final class MarkdownObjectBuilder
      * CommonMark flattens headings at parse time, so we reconstruct the hierarchy based on heading levels.
      * Tracks positions (byte/line spans) for all blocks to enable source mapping.
      */
-    public function build(Document $document, string $filename, string $source): MarkdownObject
+    public function build(Document $document, string $filename, string $source, Tokenizer $tokenizer): MarkdownObject
     {
         $root = new MarkdownObject($filename);
         $lines = preg_split("/\R/", $source) ?: [''];
@@ -48,13 +49,19 @@ final class MarkdownObjectBuilder
         while ($i < $n) {
             $node = $nodes[$i];
             if ($node instanceof Heading) {
-                $root->children[] = $this->consumeHeading($nodes, $i, $source, $lines, $lineStarts, $node->getLevel());
+                $root->children[] = $this->consumeHeading($nodes, $i, $source, $lines, $lineStarts, $node->getLevel(), $tokenizer);
 
                 continue; // $i advanced inside consumeHeading
             }
-            $root->children[] = $this->toLeaf($node, $source, $lines, $lineStarts);
+            $root->children[] = $this->toLeaf($node, $source, $lines, $lineStarts, $tokenizer);
             $i++;
         }
+
+        // Calculate root token count as sum of all children
+        $root->tokenCount = array_sum(array_map(
+            static fn (MarkdownNode $child) => $child->tokenCount,
+            $root->children
+        ));
 
         return $root;
     }
@@ -68,7 +75,7 @@ final class MarkdownObjectBuilder
      * @param  list<string>  $lines
      * @param  list<int>  $lineStarts
      */
-    private function consumeHeading(array $nodes, int &$i, string $src, array $lines, array $lineStarts, int $level): MarkdownHeading
+    private function consumeHeading(array $nodes, int &$i, string $src, array $lines, array $lineStarts, int $level, Tokenizer $tokenizer): MarkdownHeading
     {
         /** @var Heading $hNode */
         $hNode = $nodes[$i];
@@ -82,13 +89,22 @@ final class MarkdownObjectBuilder
                 if ($node->getLevel() <= $level) {
                     break;
                 }
-                $mh->children[] = $this->consumeHeading($nodes, $i, $src, $lines, $lineStarts, $node->getLevel());
+                $mh->children[] = $this->consumeHeading($nodes, $i, $src, $lines, $lineStarts, $node->getLevel(), $tokenizer);
 
                 continue;
             }
-            $mh->children[] = $this->toLeaf($node, $src, $lines, $lineStarts);
+            $mh->children[] = $this->toLeaf($node, $src, $lines, $lineStarts, $tokenizer);
             $i++;
         }
+
+        // Calculate heading token count: heading line + all children
+        $headingLine = str_repeat('#', $level) . ' ' . $mh->text;
+        $headingTokens = $tokenizer->count($headingLine);
+        $childrenTokens = array_sum(array_map(
+            static fn (MarkdownNode $child) => $child->tokenCount,
+            $mh->children
+        ));
+        $mh->tokenCount = $headingTokens + $childrenTokens;
 
         return $mh;
     }
@@ -101,7 +117,7 @@ final class MarkdownObjectBuilder
      * @param  list<string>  $lines
      * @param  list<int>  $lineStarts
      */
-    private function toLeaf(object $node, string $src, array $lines, array $lineStarts): MarkdownNode
+    private function toLeaf(object $node, string $src, array $lines, array $lineStarts, Tokenizer $tokenizer): MarkdownNode
     {
         if ($node instanceof Paragraph) {
             $first = $node->firstChild();
@@ -109,42 +125,68 @@ final class MarkdownObjectBuilder
             if ($onlyImage) {
                 /** @var Image $img */
                 $img = $first;
+                $raw = $this->sliceByLines($lines, $node->getStartLine(), $node->getEndLine());
+                $tokenCount = $tokenizer->count($raw);
 
                 return new MarkdownImage(
                     alt: $this->inlineText($img),
                     src: $img->getUrl(),
                     title: $img->getTitle(),
-                    raw: $this->sliceByLines($lines, $node->getStartLine(), $node->getEndLine()),
-                    pos: $this->pos($node, $lineStarts)
+                    raw: $raw,
+                    pos: $this->pos($node, $lineStarts),
+                    tokenCount: $tokenCount
                 );
             }
 
+            $raw = $this->sliceByLines($lines, $node->getStartLine(), $node->getEndLine());
+            $tokenCount = $tokenizer->count($raw);
+
             return new MarkdownText(
-                raw: $this->sliceByLines($lines, $node->getStartLine(), $node->getEndLine()),
-                pos: $this->pos($node, $lineStarts)
+                raw: $raw,
+                pos: $this->pos($node, $lineStarts),
+                tokenCount: $tokenCount
             );
         }
 
         if ($node instanceof FencedCode) {
+            $bodyRaw = $node->getLiteral();
+            $info = $node->getInfo() ?: null;
+            // Reconstruct full fenced block for token counting
+            $fullBlock = '```' . ($info ?? '') . "\n" . $bodyRaw . "\n```";
+            $tokenCount = $tokenizer->count($fullBlock);
+
             return new MarkdownCode(
-                bodyRaw: $node->getLiteral(), // body only
-                info: $node->getInfo() ?: null,
-                pos: $this->pos($node, $lineStarts)
+                bodyRaw: $bodyRaw,
+                info: $info,
+                pos: $this->pos($node, $lineStarts),
+                tokenCount: $tokenCount
             );
         }
 
         if ($node instanceof IndentedCode) {
+            $bodyRaw = $node->getLiteral();
+            // Indented code: add 4 spaces to each line
+            $lines = explode("\n", $bodyRaw);
+            $indentedLines = array_map(static fn ($line): string => '    ' . $line, $lines);
+            $indentedCode = implode("\n", $indentedLines);
+            $tokenCount = $tokenizer->count($indentedCode);
+
             return new MarkdownCode(
-                bodyRaw: $node->getLiteral(),
+                bodyRaw: $bodyRaw,
                 info: null,
-                pos: $this->pos($node, $lineStarts)
+                pos: $this->pos($node, $lineStarts),
+                tokenCount: $tokenCount
             );
         }
 
         if ($node instanceof Table) {
+            $raw = $this->sliceByLines($lines, $node->getStartLine(), $node->getEndLine());
+            $tokenCount = $tokenizer->count($raw);
+
             return new MarkdownTable(
-                raw: $this->sliceByLines($lines, $node->getStartLine(), $node->getEndLine()),
-                pos: $this->pos($node, $lineStarts)
+                raw: $raw,
+                pos: $this->pos($node, $lineStarts),
+                tokenCount: $tokenCount
             );
         }
 
@@ -153,13 +195,18 @@ final class MarkdownObjectBuilder
         if (! $node instanceof AbstractBlock) {
             return new MarkdownText(
                 raw: '',
-                pos: null
+                pos: null,
+                tokenCount: $tokenizer->count('')
             );
         }
 
+        $raw = $this->sliceByLines($lines, $node->getStartLine(), $node->getEndLine());
+        $tokenCount = $tokenizer->count($raw);
+
         return new MarkdownText(
-            raw: $this->sliceByLines($lines, $node->getStartLine(), $node->getEndLine()),
-            pos: $this->pos($node, $lineStarts)
+            raw: $raw,
+            pos: $this->pos($node, $lineStarts),
+            tokenCount: $tokenCount
         );
     }
 

@@ -20,14 +20,19 @@ beforeEach(function () {
     $this->env->addExtension(new TableExtension);
     $this->parser = new MarkdownParser($this->env);
     $this->builder = new MarkdownObjectBuilder;
+    // Simple tokenizer for testing - counts string length
+    $this->tokenizer = new class implements \BenBjurstrom\MarkdownObject\Contracts\Tokenizer {
+        public function count(string $text): int {
+            return strlen($text);
+        }
+    };
 });
 
 it('builds a simple document with just text', closure: function () {
     $markdown = "This is a simple paragraph.\n\nThis is another paragraph.";
     $document = $this->parser->parse($markdown);
 
-    $result = $this->builder->build($document, 'test.md', $markdown);
-    // dd($result->toJson(JSON_PRETTY_PRINT));
+    $result = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     expect($result)
         ->toBeInstanceOf(MarkdownObject::class)
@@ -53,7 +58,7 @@ Content under H2.
 MD;
 
     $document = $this->parser->parse($markdown);
-    $result = $this->builder->build($document, 'test.md', $markdown);
+    $result = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     // Should have 2 preamble text blocks + 1 H1 heading
     expect($result->children)->toHaveCount(3)
@@ -100,7 +105,7 @@ Second H1 content.
 MD;
 
     $document = $this->parser->parse($markdown);
-    $result = $this->builder->build($document, 'test.md', $markdown);
+    $result = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     // Root should have 2 H1 headings
     expect($result->children)->toHaveCount(2);
@@ -142,7 +147,7 @@ function hello() {
 MD;
 
     $document = $this->parser->parse($markdown);
-    $result = $this->builder->build($document, 'test.md', $markdown);
+    $result = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     $h1 = $result->children[0];
     expect($h1->children)->toHaveCount(1);
@@ -164,7 +169,7 @@ Regular text.
 MD;
 
     $document = $this->parser->parse($markdown);
-    $result = $this->builder->build($document, 'test.md', $markdown);
+    $result = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     $h1 = $result->children[0];
     expect($h1->children)->toHaveCount(2);
@@ -186,7 +191,7 @@ it('builds tables', function () {
 MD;
 
     $document = $this->parser->parse($markdown);
-    $result = $this->builder->build($document, 'test.md', $markdown);
+    $result = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     $h1 = $result->children[0];
     expect($h1->children)->toHaveCount(1);
@@ -207,7 +212,7 @@ This is text with ![inline](inline.jpg) image.
 MD;
 
     $document = $this->parser->parse($markdown);
-    $result = $this->builder->build($document, 'test.md', $markdown);
+    $result = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     $h1 = $result->children[0];
     expect($h1->children)->toHaveCount(2);
@@ -261,7 +266,7 @@ Content here.
 MD;
 
     $document = $this->parser->parse($markdown);
-    $result = $this->builder->build($document, 'test.md', $markdown);
+    $result = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     $h1 = $result->children[0];
     expect($h1)->toBeInstanceOf(MarkdownHeading::class)
@@ -276,7 +281,7 @@ Paragraph text.
 MD;
 
     $document = $this->parser->parse($markdown);
-    $result = $this->builder->build($document, 'test.md', $markdown);
+    $result = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     $h1 = $result->children[0];
     expect($h1->pos)->not->toBeNull()
@@ -310,7 +315,7 @@ More text.
 MD;
 
     $document = $this->parser->parse($markdown);
-    $result = $this->builder->build($document, 'test.md', $markdown);
+    $result = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     $h1 = $result->children[0];
     expect($h1->children)->toHaveCount(5);
@@ -325,7 +330,7 @@ MD;
 it('handles empty document', function () {
     $markdown = '';
     $document = $this->parser->parse($markdown);
-    $result = $this->builder->build($document, 'test.md', $markdown);
+    $result = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     expect($result)->toBeInstanceOf(MarkdownObject::class)
         ->filename->toBe('test.md')
@@ -340,7 +345,7 @@ it('handles document with only headings (no content)', function () {
 MD;
 
     $document = $this->parser->parse($markdown);
-    $result = $this->builder->build($document, 'test.md', $markdown);
+    $result = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     expect($result->children)->toHaveCount(1);
     $h1 = $result->children[0];
@@ -360,8 +365,81 @@ it('extracts heading text correctly with inline formatting', function () {
     $markdown = '# This is **bold** and *italic* text';
 
     $document = $this->parser->parse($markdown);
-    $result = $this->builder->build($document, 'test.md', $markdown);
+    $result = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     $h1 = $result->children[0];
     expect($h1->text)->toBe('This is bold and italic text');
 });
+
+it('calculates token counts for all nodes', function () {
+    $markdown = <<<'MD'
+Some preamble text.
+
+# Heading 1
+
+Content under H1.
+
+## Heading 2
+
+Content under H2.
+
+```php
+echo "test";
+```
+MD;
+
+    $document = $this->parser->parse($markdown);
+    $result = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
+
+    // Root token count should be sum of all children
+    expect($result->tokenCount)->toBeInt()->toBeGreaterThan(0);
+
+    // Preamble text should have token count
+    $preamble = $result->children[0];
+    expect($preamble)->toBeInstanceOf(MarkdownText::class);
+    expect($preamble->tokenCount)->toBe(strlen('Some preamble text.'));
+
+    // Heading should have token count that includes heading line + all children
+    $h1 = $result->children[1];
+    expect($h1)->toBeInstanceOf(MarkdownHeading::class);
+    expect($h1->tokenCount)->toBeInt()->toBeGreaterThan(0);
+
+    // H1 token count should include the heading line (# Heading 1) + children
+    $h1Content = $h1->children[0];
+    expect($h1Content)->toBeInstanceOf(MarkdownText::class);
+    expect($h1Content->tokenCount)->toBe(strlen('Content under H1.'));
+
+    // H2 (nested under H1)
+    $h2 = $h1->children[1];
+    expect($h2)->toBeInstanceOf(MarkdownHeading::class);
+    expect($h2->tokenCount)->toBeInt()->toBeGreaterThan(0);
+
+    // H2 content
+    $h2Content = $h2->children[0];
+    expect($h2Content)->toBeInstanceOf(MarkdownText::class);
+    expect($h2Content->tokenCount)->toBe(strlen('Content under H2.'));
+
+    // Code block
+    $code = $h2->children[1];
+    expect($code)->toBeInstanceOf(MarkdownCode::class);
+    // Code block token count should include full fenced block
+    // CommonMark's getLiteral() includes a trailing newline, so: ```php\necho "test";\n\n```
+    $expectedCodeBlock = "```php\n" . $code->bodyRaw . "\n```";
+    expect($code->tokenCount)->toBe(strlen($expectedCodeBlock));
+
+    // Verify heading token counts include their children recursively
+    // H2 should be: heading line + content + code
+    $h2HeadingLine = '## Heading 2';
+    $expectedH2Tokens = strlen($h2HeadingLine) + $h2Content->tokenCount + $code->tokenCount;
+    expect($h2->tokenCount)->toBe($expectedH2Tokens);
+
+    // H1 should be: heading line + h1 content + all of H2's tokens
+    $h1HeadingLine = '# Heading 1';
+    $expectedH1Tokens = strlen($h1HeadingLine) + $h1Content->tokenCount + $h2->tokenCount;
+    expect($h1->tokenCount)->toBe($expectedH1Tokens);
+
+    // Root should be sum of all top-level children
+    $expectedRootTokens = $preamble->tokenCount + $h1->tokenCount;
+    expect($result->tokenCount)->toBe($expectedRootTokens);
+});
+

@@ -17,6 +17,12 @@ beforeEach(function () {
     $this->env->addExtension(new TableExtension);
     $this->parser = new MarkdownParser($this->env);
     $this->builder = new MarkdownObjectBuilder;
+    // Simple tokenizer for testing - counts string length
+    $this->tokenizer = new class implements \BenBjurstrom\MarkdownObject\Contracts\Tokenizer {
+        public function count(string $text): int {
+            return strlen($text);
+        }
+    };
 });
 
 it('serializes to JSON with correct structure', function () {
@@ -31,7 +37,7 @@ More text.
 MD;
 
     $document = $this->parser->parse($markdown);
-    $mdObj = $this->builder->build($document, 'test.md', $markdown);
+    $mdObj = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     $json = $mdObj->toJson();
 
@@ -47,7 +53,7 @@ it('serializes to pretty JSON when flag provided', function () {
 Text.';
 
     $document = $this->parser->parse($markdown);
-    $mdObj = $this->builder->build($document, 'test.md', $markdown);
+    $mdObj = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     $json = $mdObj->toJson(JSON_PRETTY_PRINT);
 
@@ -64,7 +70,7 @@ Paragraph text.
 MD;
 
     $document = $this->parser->parse($markdown);
-    $original = $this->builder->build($document, 'test.md', $markdown);
+    $original = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     $json = $original->toJson();
     $restored = MarkdownObject::fromJson($json);
@@ -89,7 +95,7 @@ Content under H2.
 MD;
 
     $document = $this->parser->parse($markdown);
-    $original = $this->builder->build($document, 'doc.md', $markdown);
+    $original = $this->builder->build($document, 'doc.md', $markdown, $this->tokenizer);
 
     $json = $original->toJson();
     $restored = MarkdownObject::fromJson($json);
@@ -132,7 +138,7 @@ code
 MD;
 
     $document = $this->parser->parse($markdown);
-    $original = $this->builder->build($document, 'test.md', $markdown);
+    $original = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     $json = $original->toJson();
     $restored = MarkdownObject::fromJson($json);
@@ -152,7 +158,7 @@ Text.
 MD;
 
     $document = $this->parser->parse($markdown);
-    $original = $this->builder->build($document, 'test.md', $markdown);
+    $original = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     $json = $original->toJson();
     $restored = MarkdownObject::fromJson($json);
@@ -169,7 +175,7 @@ it('handles empty children array in JSON', function () {
     $markdown = '# Empty Heading';
 
     $document = $this->parser->parse($markdown);
-    $original = $this->builder->build($document, 'test.md', $markdown);
+    $original = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     $json = $original->toJson();
     $restored = MarkdownObject::fromJson($json);
@@ -190,7 +196,7 @@ More content here.
 MD;
 
     $document = $this->parser->parse($markdown);
-    $mdObj = $this->builder->build($document, 'guide.md', $markdown);
+    $mdObj = $this->builder->build($document, 'guide.md', $markdown, $this->tokenizer);
 
     $chunks = $mdObj->toMarkdownChunks();
 
@@ -214,7 +220,7 @@ More content.
 MD;
 
     $document = $this->parser->parse($markdown);
-    $mdObj = $this->builder->build($document, 'docs.md', $markdown);
+    $mdObj = $this->builder->build($document, 'docs.md', $markdown, $this->tokenizer);
 
     $chunks = $mdObj->toMarkdownChunks();
 
@@ -243,7 +249,7 @@ And yet another paragraph to make sure we have enough content for multiple chunk
 MD;
 
     $document = $this->parser->parse($markdown);
-    $mdObj = $this->builder->build($document, 'test.md', $markdown);
+    $mdObj = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     $chunks = $mdObj->toMarkdownChunks(target: 50, hardCap: 100);
 
@@ -264,7 +270,7 @@ Content here.
 MD;
 
     $document = $this->parser->parse($markdown);
-    $mdObj = $this->builder->build($document, 'custom.md', $markdown);
+    $mdObj = $this->builder->build($document, 'custom.md', $markdown, $this->tokenizer);
 
     $template = new ChunkTemplate(
         breadcrumbFmt: '### Location: %s',
@@ -296,7 +302,7 @@ Content 3.
 MD;
 
     $document = $this->parser->parse($markdown);
-    $mdObj = $this->builder->build($document, 'test.md', $markdown);
+    $mdObj = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     $chunks = $mdObj->toMarkdownChunks();
 
@@ -322,7 +328,7 @@ Fourth paragraph with additional content for chunking purposes and more words to
 MD;
 
     $document = $this->parser->parse($markdown);
-    $mdObj = $this->builder->build($document, 'test.md', $markdown);
+    $mdObj = $this->builder->build($document, 'test.md', $markdown, $this->tokenizer);
 
     // Use small target to force multiple chunks
     $chunks = $mdObj->toMarkdownChunks(target: 50, hardCap: 100);
@@ -358,7 +364,7 @@ Deep content.
 MD;
 
     $document = $this->parser->parse($markdown);
-    $mdObj = $this->builder->build($document, 'book.md', $markdown);
+    $mdObj = $this->builder->build($document, 'book.md', $markdown, $this->tokenizer);
 
     $chunks = $mdObj->toMarkdownChunks();
 
