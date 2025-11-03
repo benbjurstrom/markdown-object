@@ -771,16 +771,18 @@ i=3: unit=400, sum=150
 
 This architecture guide is current as of the implementation that:
 - Uses `MarkdownNode` abstract base class with centralized serialization/deserialization
-- Added optional `tokenCount` property to all model classes (nullable, calculated at build time)
-- Two-level token counting: build-time (models) and chunking-time (Units)
+- Required `tokenCount: int` property on `MarkdownNode` (inherited by all model classes)
+- Two-level token counting: build-time (models, required) and chunking-time (Units, required)
+- Tokenizer is required parameter for `build()` - no longer optional
 - Uses PHP 8.2+ features (readonly classes, enums, promoted properties)
 - Integrates League CommonMark 2.7+ and Yethee Tiktoken
 - Includes comprehensive test coverage across all three phases:
-  - Build (16 tests) - Parser correctness, token counting
+  - Build (15 tests) - Parser correctness, token counting
   - Planning (33 tests) - SectionPlanner, UnitPlanner, Packer
   - Render (15 tests) - Chunk assembly and formatting
+  - Model (14 tests) - JSON round-tripping, chunking integration
 - Type-safe polymorphic deserialization via `__type` field
 
-**Test Status:** 80 tests passing - PHPStan level 10 clean
+**Test Status:** 79 tests passing - PHPStan level 10 clean
 
 For implementation details, see the code. For rationale, see "Design Decisions" above.
