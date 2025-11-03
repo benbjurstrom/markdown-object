@@ -52,8 +52,16 @@ $chunks = $mdObj->toMarkdownChunks(target: 512, hardCap: 1024);
 foreach ($chunks as $chunk) {
     echo "ID: {$chunk->id}\n";
     echo "Path: " . implode(' › ', $chunk->breadcrumb) . "\n";
-    echo "Tokens: {$chunk->tokenCount}\n\n";
-    echo $chunk->markdown . "\n\n---\n\n";
+    echo "Tokens: {$chunk->tokenCount}\n";
+    
+    // Source position tracking for finding chunks in original document
+    $pos = $chunk->sourcePosition;
+    if ($pos->lines !== null) {
+        echo "Lines: {$pos->lines->startLine}-{$pos->lines->endLine}\n";
+    }
+    echo "Bytes: {$pos->bytes->startByte}-{$pos->bytes->endByte}\n";
+    
+    echo "\n" . $chunk->markdown . "\n\n---\n\n";
 }
 
 /*
@@ -61,6 +69,8 @@ Example output:
 ID: 1
 Path: guide.md › Getting Started
 Tokens: 421
+Lines: 1-15
+Bytes: 0-523
 
 # Getting Started
 Markdown Object turns Markdown into a typed model and emits
@@ -71,6 +81,8 @@ hierarchically-packed chunks for better retrieval…
 ID: 2
 Path: guide.md › Getting Started › Installation
 Tokens: 503
+Lines: 16-28
+Bytes: 524-1247
 
 ## Installation
 Run:
@@ -131,6 +143,34 @@ $chunks = $mdObj->toMarkdownChunks(
     repeatTableHeaders: false   // Optional: don't repeat headers in split tables
 );
 ```
+
+### Source Position Tracking
+
+Each chunk includes a `sourcePosition` property that maps it back to the original document, enabling efficient retrieval and navigation:
+
+```php
+foreach ($chunks as $chunk) {
+    $pos = $chunk->sourcePosition;
+    
+    // Line-based access (human-readable, markdown-friendly)
+    if ($pos->lines !== null) {
+        echo "Lines {$pos->lines->startLine} to {$pos->lines->endLine}\n";
+        // Extract using: sed -n '${start},${end}p' file.md
+    }
+    
+    // Byte-based access (O(1) random access for large files)
+    echo "Bytes {$pos->bytes->startByte} to {$pos->bytes->endByte}\n";
+    // Extract using: dd if=file.md skip=$start count=$length bs=1
+}
+```
+
+**Use cases:**
+- **LLM context retrieval** – quickly locate and extract surrounding context from the source document
+- **Targeted edits** – make changes to specific sections based on retrieval results
+- **Navigation** – jump to related sections in the original document
+- **Debugging** – verify chunk content matches source material
+
+The hierarchical chunking algorithm ensures that chunks are always contiguous in the source document, making position tracking reliable and predictable.
 
 ## Chunking Strategy
 
