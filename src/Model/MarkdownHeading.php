@@ -13,9 +13,12 @@ final class MarkdownHeading extends MarkdownNode
         public int $level,
         public string $text,
         public ?string $rawLine = null,
-        public ?Position $pos = null,
-        public int $tokenCount = 0
-    ) {}
+        ?Position $pos = null,
+        int $tokenCount = 0
+    ) {
+        $this->pos = $pos;
+        $this->tokenCount = $tokenCount;
+    }
 
     /**
      * @return array{

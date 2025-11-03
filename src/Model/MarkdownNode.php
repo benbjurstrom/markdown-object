@@ -8,6 +8,8 @@ abstract class MarkdownNode
 {
     public int $tokenCount = 0;
 
+    public ?Position $pos = null;
+
     /**
      * @return array<string, mixed>
      */

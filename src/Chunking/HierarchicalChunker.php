@@ -3,6 +3,8 @@
 namespace BenBjurstrom\MarkdownObject\Chunking;
 
 use BenBjurstrom\MarkdownObject\Contracts\Tokenizer;
+use BenBjurstrom\MarkdownObject\Model\ByteSpan;
+use BenBjurstrom\MarkdownObject\Model\LineSpan;
 use BenBjurstrom\MarkdownObject\Model\MarkdownCode;
 use BenBjurstrom\MarkdownObject\Model\MarkdownHeading;
 use BenBjurstrom\MarkdownObject\Model\MarkdownImage;
@@ -10,6 +12,7 @@ use BenBjurstrom\MarkdownObject\Model\MarkdownNode;
 use BenBjurstrom\MarkdownObject\Model\MarkdownObject;
 use BenBjurstrom\MarkdownObject\Model\MarkdownTable;
 use BenBjurstrom\MarkdownObject\Model\MarkdownText;
+use BenBjurstrom\MarkdownObject\Model\Position;
 
 /**
  * Hierarchical chunking service implementing greedy top-down packing.
@@ -73,7 +76,8 @@ final class HierarchicalChunker
                         id: null,
                         breadcrumb: $breadcrumb,
                         markdown: $markdown,
-                        tokenCount: $this->tokenizer->count($markdown)
+                        tokenCount: $this->tokenizer->count($markdown),
+                        sourcePosition: $this->calculateSourcePosition($preamble)
                     );
                     $preamble = [];
                 }
@@ -95,7 +99,8 @@ final class HierarchicalChunker
                 id: null,
                 breadcrumb: $breadcrumb,
                 markdown: $markdown,
-                tokenCount: $this->tokenizer->count($markdown)
+                tokenCount: $this->tokenizer->count($markdown),
+                sourcePosition: $this->calculateSourcePosition($preamble)
             );
         }
 
@@ -122,7 +127,7 @@ final class HierarchicalChunker
         }
 
         // Include the heading itself
-        $headingPiece = new ContentPiece($heading->rawLine ?? '', $this->tokenizer->count($heading->rawLine ?? ''));
+        $headingPiece = new ContentPiece($heading->rawLine ?? '', $this->tokenizer->count($heading->rawLine ?? ''), $heading->pos ?? null);
         $allPieces = [$headingPiece, ...$directPieces];
         $directTokens = $this->countPieces($directPieces);
 
@@ -136,7 +141,8 @@ final class HierarchicalChunker
                     id: null,
                     breadcrumb: $newBreadcrumb,
                     markdown: $markdown,
-                    tokenCount: $this->tokenizer->count($markdown)
+                    tokenCount: $this->tokenizer->count($markdown),
+                    sourcePosition: $this->calculateSourcePosition($allPieces)
                 )];
             }
 
@@ -160,7 +166,8 @@ final class HierarchicalChunker
                 id: null,
                 breadcrumb: $newBreadcrumb,
                 markdown: $markdown,
-                tokenCount: $this->tokenizer->count($markdown)  // Count actual rendered markdown
+                tokenCount: $this->tokenizer->count($markdown),  // Count actual rendered markdown
+                sourcePosition: $this->calculateSourcePosition($allContentPieces)
             )];
         }
 
@@ -186,7 +193,8 @@ final class HierarchicalChunker
                         id: null,
                         breadcrumb: $newBreadcrumb,
                         markdown: $markdown,
-                        tokenCount: $this->tokenizer->count($markdown)
+                        tokenCount: $this->tokenizer->count($markdown),
+                        sourcePosition: $this->calculateSourcePosition($accumulated)
                     );
                 }
 
@@ -206,7 +214,8 @@ final class HierarchicalChunker
                 id: null,
                 breadcrumb: $newBreadcrumb,
                 markdown: $markdown,
-                tokenCount: $this->tokenizer->count($markdown)
+                tokenCount: $this->tokenizer->count($markdown),
+                sourcePosition: $this->calculateSourcePosition($accumulated)
             );
         }
 
@@ -224,7 +233,7 @@ final class HierarchicalChunker
         if ($node->tokenCount <= $this->hardCap) {
             $markdown = $this->renderNode($node);
 
-            return [new ContentPiece($markdown, $node->tokenCount)];
+            return [new ContentPiece($markdown, $node->tokenCount, $node->pos ?? null)];
         }
 
         // Node exceeds hardCap - use splitters
@@ -232,7 +241,7 @@ final class HierarchicalChunker
             $node instanceof MarkdownText => $this->textSplitter->split($node, $this->tokenizer, $this->target, $this->hardCap),
             $node instanceof MarkdownCode => $this->codeSplitter->split($node, $this->tokenizer, $this->target, $this->hardCap),
             $node instanceof MarkdownTable => $this->tableSplitter->split($node, $this->tokenizer, $this->target, $this->hardCap),
-            $node instanceof MarkdownImage => [new ContentPiece($node->raw, $node->tokenCount)],
+            $node instanceof MarkdownImage => [new ContentPiece($node->raw, $node->tokenCount, $node->pos ?? null)],
             default => []
         };
     }
@@ -265,7 +274,7 @@ final class HierarchicalChunker
         $pieces = [];
 
         // Add heading itself
-        $pieces[] = new ContentPiece($heading->rawLine ?? '', $this->tokenizer->count($heading->rawLine ?? ''));
+        $pieces[] = new ContentPiece($heading->rawLine ?? '', $this->tokenizer->count($heading->rawLine ?? ''), $heading->pos ?? null);
 
         // Add all children
         foreach ($heading->children as $child) {
@@ -273,7 +282,7 @@ final class HierarchicalChunker
                 $pieces = array_merge($pieces, $this->flattenAllRecursive($child));
             } else {
                 $markdown = $this->renderNode($child);
-                $pieces[] = new ContentPiece($markdown, $child->tokenCount);
+                $pieces[] = new ContentPiece($markdown, $child->tokenCount, $child->pos ?? null);
             }
         }
 
@@ -323,7 +332,8 @@ final class HierarchicalChunker
                     id: null,
                     breadcrumb: $breadcrumb,
                     markdown: $this->renderContentPieces($accumulated),
-                    tokenCount: $currentTokens
+                    tokenCount: $currentTokens,
+                    sourcePosition: $this->calculateSourcePosition($accumulated)
                 );
                 $accumulated = [$piece];
                 $currentTokens = $piece->tokens;
@@ -340,7 +350,8 @@ final class HierarchicalChunker
                 id: null,
                 breadcrumb: $breadcrumb,
                 markdown: $markdown,
-                tokenCount: $this->tokenizer->count($markdown)
+                tokenCount: $this->tokenizer->count($markdown),
+                sourcePosition: $this->calculateSourcePosition($accumulated)
             );
         }
 
@@ -405,5 +416,49 @@ final class HierarchicalChunker
         }
 
         return $total;
+    }
+
+    /**
+     * Calculate combined source position from ContentPieces.
+     * Returns the span from min(startByte/startLine) to max(endByte/endLine).
+     *
+     * @param  list<ContentPiece>  $pieces
+     */
+    private function calculateSourcePosition(array $pieces): Position
+    {
+        $positions = array_filter(
+            array_map(fn (ContentPiece $p) => $p->sourcePosition, $pieces),
+            fn ($pos) => $pos !== null
+        );
+
+        if (empty($positions)) {
+            // Fallback for edge case where no positions available
+            return new Position(
+                bytes: new ByteSpan(0, 0),
+                lines: null
+            );
+        }
+
+        $minStartByte = PHP_INT_MAX;
+        $maxEndByte = PHP_INT_MIN;
+        $minStartLine = PHP_INT_MAX;
+        $maxEndLine = PHP_INT_MIN;
+        $hasLines = false;
+
+        foreach ($positions as $pos) {
+            $minStartByte = min($minStartByte, $pos->bytes->startByte);
+            $maxEndByte = max($maxEndByte, $pos->bytes->endByte);
+
+            if ($pos->lines !== null) {
+                $hasLines = true;
+                $minStartLine = min($minStartLine, $pos->lines->startLine);
+                $maxEndLine = max($maxEndLine, $pos->lines->endLine);
+            }
+        }
+
+        return new Position(
+            bytes: new ByteSpan($minStartByte, $maxEndByte),
+            lines: $hasLines ? new LineSpan($minStartLine, $maxEndLine) : null
+        );
     }
 }

@@ -7,9 +7,12 @@ final class MarkdownCode extends MarkdownNode
     public function __construct(
         public string $bodyRaw,
         public ?string $info = null,
-        public ?Position $pos = null,
-        public int $tokenCount = 0
-    ) {}
+        ?Position $pos = null,
+        int $tokenCount = 0
+    ) {
+        $this->pos = $pos;
+        $this->tokenCount = $tokenCount;
+    }
 
     /**
      * @return array{__type: class-string<self>, bodyRaw: string, info: string|null, pos: array<string, mixed>|null, tokenCount: int}

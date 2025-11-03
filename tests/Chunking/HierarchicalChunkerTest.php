@@ -421,4 +421,71 @@ MD;
         $this->assertStringContainsString('## Section A', $chunks[3]->markdown);
         $this->assertStringContainsString('### Subsection A1', $chunks[3]->markdown);
     }
+
+    /** Test that sourcePosition is populated in chunks */
+    public function test_source_position_is_populated(): void
+    {
+        $markdown = <<<'MD'
+# Heading 1
+Content under heading 1.
+
+## Heading 2
+Content under heading 2.
+
+### Heading 3
+Content under heading 3.
+MD;
+
+        $doc = $this->parser->parse($markdown);
+        $mdObj = $this->builder->build($doc, 'test.md', $markdown, $this->tokenizer);
+        $chunks = $mdObj->toMarkdownChunks(target: 512, hardCap: 1024, tok: $this->tokenizer);
+
+        $this->assertCount(1, $chunks);
+
+        // Verify sourcePosition is always present
+        $pos = $chunks[0]->sourcePosition;
+        $this->assertNotNull($pos->bytes);
+
+        // Verify byte span covers the document
+        $this->assertGreaterThanOrEqual(0, $pos->bytes->startByte);
+        $this->assertGreaterThan($pos->bytes->startByte, $pos->bytes->endByte);
+
+        // Verify line span if present
+        if ($pos->lines !== null) {
+            $this->assertGreaterThanOrEqual(0, $pos->lines->startLine);
+            $this->assertGreaterThan($pos->lines->startLine, $pos->lines->endLine);
+        }
+    }
+
+    /** Test sourcePosition with multiple chunks */
+    public function test_source_position_with_multiple_chunks(): void
+    {
+        $markdown = <<<'MD'
+# Heading 1
+{600 tokens}
+
+## Heading 2
+{600 tokens}
+MD;
+
+        $doc = $this->parser->parse($markdown);
+        $mdObj = $this->builder->build($doc, 'test.md', $markdown, $this->tokenizer);
+        $chunks = $mdObj->toMarkdownChunks(target: 512, hardCap: 700, tok: $this->tokenizer);
+
+        // Should split into 2 chunks
+        $this->assertGreaterThan(1, count($chunks));
+
+        // Verify all chunks have valid sourcePosition with bytes
+        foreach ($chunks as $chunk) {
+            $this->assertNotNull($chunk->sourcePosition->bytes);
+        }
+
+        // Verify positions are ordered (first chunk starts before second chunk)
+        if (count($chunks) >= 2) {
+            $this->assertLessThan(
+                $chunks[1]->sourcePosition->bytes->startByte,
+                $chunks[0]->sourcePosition->bytes->endByte
+            );
+        }
+    }
 }
