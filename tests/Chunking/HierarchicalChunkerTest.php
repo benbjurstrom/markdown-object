@@ -330,8 +330,8 @@ MD;
         $chunks = $mdObj->toMarkdownChunks(target: 512, hardCap: 1024, tok: $this->tokenizer);
 
         $this->assertCount(2, $chunks);
-        $this->assertEquals('c1', $chunks[0]->id);
-        $this->assertEquals('c2', $chunks[1]->id);
+        $this->assertEquals(1, $chunks[0]->id);
+        $this->assertEquals(2, $chunks[1]->id);
     }
 
     /** Test when heading itself exceeds hardCap and must split children */

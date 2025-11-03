@@ -46,7 +46,7 @@ final class HierarchicalChunker
 
         // Assign IDs
         foreach ($chunks as $i => $chunk) {
-            $chunk->id = 'c'.($i + 1);
+            $chunk->id = $i + 1;
         }
 
         return $chunks;

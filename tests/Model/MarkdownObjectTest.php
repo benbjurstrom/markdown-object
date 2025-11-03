@@ -287,7 +287,7 @@ MD;
 
     // Check IDs are sequential
     for ($i = 0; $i < count($chunks); $i++) {
-        expect($chunks[$i]->id)->toBe('c'.($i + 1));
+        expect($chunks[$i]->id)->toBe($i + 1);
     }
 });
 
