@@ -58,7 +58,7 @@ foreach ($chunks as $chunk) {
 
 /*
 Example output:
-ID: c1
+ID: 1
 Path: guide.md › Getting Started
 Tokens: 421
 
@@ -68,7 +68,7 @@ hierarchically-packed chunks for better retrieval…
 
 ---
 
-ID: c2
+ID: 2
 Path: guide.md › Getting Started › Installation
 Tokens: 503
 
@@ -163,8 +163,8 @@ The package uses **hierarchical greedy packing** to maximize semantic coherence:
 ```
 
 With `target: 512, hardCap: 1024`:
-- **Old approach**: 3 chunks (one per heading) → fragmented, loss of context
-- **New approach**: 1 chunk (900 tokens) → related content stays together
+- **Result**: 1 chunk (900 tokens) – all related content stays together under the parent heading
+- **Why**: Total tokens (900) < hardCap (1024), so semantic coherence is preserved
 
 ## Testing
 
