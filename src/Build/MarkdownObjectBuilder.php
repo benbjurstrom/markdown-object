@@ -98,7 +98,7 @@ final class MarkdownObjectBuilder
         }
 
         // Calculate heading token count: heading line + all children
-        $headingLine = str_repeat('#', $level) . ' ' . $mh->text;
+        $headingLine = str_repeat('#', $level).' '.$mh->text;
         $headingTokens = $tokenizer->count($headingLine);
         $childrenTokens = array_sum(array_map(
             static fn (MarkdownNode $child) => $child->tokenCount,
@@ -152,7 +152,7 @@ final class MarkdownObjectBuilder
             $bodyRaw = $node->getLiteral();
             $info = $node->getInfo() ?: null;
             // Reconstruct full fenced block for token counting
-            $fullBlock = '```' . ($info ?? '') . "\n" . $bodyRaw . "\n```";
+            $fullBlock = '```'.($info ?? '')."\n".$bodyRaw."\n```";
             $tokenCount = $tokenizer->count($fullBlock);
 
             return new MarkdownCode(
@@ -167,7 +167,7 @@ final class MarkdownObjectBuilder
             $bodyRaw = $node->getLiteral();
             // Indented code: add 4 spaces to each line
             $lines = explode("\n", $bodyRaw);
-            $indentedLines = array_map(static fn ($line): string => '    ' . $line, $lines);
+            $indentedLines = array_map(static fn ($line): string => '    '.$line, $lines);
             $indentedCode = implode("\n", $indentedLines);
             $tokenCount = $tokenizer->count($indentedCode);
 

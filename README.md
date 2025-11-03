@@ -7,13 +7,15 @@
 [![Total Downloads](https://img.shields.io/packagist/dt/benbjurstrom/markdown-object.svg?style=flat-square)](https://packagist.org/packages/benbjurstrom/markdown-object)
 
 **Structure-aware, token-smart Markdown → chunks for RAG.**
-Turn Markdown into a typed object model, then emit breadcrumbed chunks that align to headings and respect your token budget. The output ideal for embeddings and retrieval. Built on **League CommonMark** and **Yethee\Tiktoken** for accurate parsing and counts. 
+Turn Markdown into a typed object model, then emit hierarchically-packed chunks that keep related content together. Built on **League CommonMark** and **Yethee\Tiktoken** for accurate parsing and token counting.
 
-### Why you’d use it (in practice)
+### Why you'd use it
 
-* **Heading-aligned chunks** that keep paragraphs, code blocks, and tables intact—no mid-sentence or mid-fence cuts. 
-* **Breadcrumbs** like `file.md › H1 › H2` baked into each chunk for stronger retrieval context, with their token cost automatically budgeted.  
-* **Token-aware planning & packing** (target + hard cap, early finish, final stretch) so chunks land in the sweet spot for your model. 
+* **Hierarchical greedy packing** – keeps related content together at the highest possible level, maximizing semantic coherence
+* **Smart chunking** – uses hardCap for hierarchy decisions, target for content splitting
+* **Breadcrumb arrays** – `['file.md', 'Chapter 1', 'Section 1.1']` provide structured navigation context
+* **Token-accurate** – tiktoken integration ensures precise token counts for your embedding model
+* **No empty chunks** – parent headings always appear with content, never in isolation
 
 ---
 
@@ -23,11 +25,11 @@ From raw Markdown to RAG-ready chunks:
 
 ```php
 use League\CommonMark\Environment\Environment;
-use League\CommonMark\MarkdownParser;
+use League\CommonMark\Parser\MarkdownParser;
 use League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension;
 use League\CommonMark\Extension\Table\TableExtension;
-
 use BenBjurstrom\MarkdownObject\Build\MarkdownObjectBuilder;
+use BenBjurstrom\MarkdownObject\Tokenizer\TikTokenizer;
 
 // 1) Parse Markdown with CommonMark
 $env = new Environment();
@@ -39,57 +41,44 @@ $filename = 'guide.md';
 $markdown = file_get_contents($filename);
 $doc      = $parser->parse($markdown);
 
-// 2) Build the structured model
-$builder = new MarkdownObjectBuilder();
-$md      = $builder->build($doc, $filename, $markdown);
+// 2) Build the structured model (tokenizer required)
+$builder   = new MarkdownObjectBuilder();
+$tokenizer = TikTokenizer::forModel('gpt-3.5-turbo');
+$mdObj     = $builder->build($doc, $filename, $markdown, $tokenizer);
 
-// 3) Emit breadcrumbed, token-budgeted chunks
-$chunks = $md->toMarkdownChunks(target: 512, hardCap: 1024);
+// 3) Emit hierarchically-packed chunks
+$chunks = $mdObj->toMarkdownChunks(target: 512, hardCap: 1024);
 
-foreach ($chunks as $i => $chunk) {
-    echo "Chunk #$i\n";
-    echo "Path: " . implode(' › ', $chunk->breadcrumb) . "\n";
-    echo "Tokens: {$chunk->tokenCount}\n\n";
-    echo $chunk->markdown . "\n\n---\n\n";
-}
-
-foreach ($chunks as $i => $chunk) {
-    echo "Chunk #$i\n";
+foreach ($chunks as $chunk) {
+    echo "ID: {$chunk->id}\n";
     echo "Path: " . implode(' › ', $chunk->breadcrumb) . "\n";
     echo "Tokens: {$chunk->tokenCount}\n\n";
     echo $chunk->markdown . "\n\n---\n\n";
 }
 
 /*
-Example output (truncated for brevity):
-Chunk #0
+Example output:
+ID: c1
 Path: guide.md › Getting Started
 Tokens: 421
 
 # Getting Started
 Markdown Object turns Markdown into a typed model and emits
-heading-aligned chunks with breadcrumbs for better retrieval…
-- Structure-aware splitting (paragraphs, tables, code)
-- Token-aware packing with target/hard cap
-…
+hierarchically-packed chunks for better retrieval…
 
 ---
 
-Chunk #1
-Path: guide.md › Usage › Installation
+ID: c2
+Path: guide.md › Getting Started › Installation
 Tokens: 503
 
 ## Installation
 Run:
-
-    composer require benbjurstrom/markdown-object
-
-Then initialize your pipeline and configure your tokenizer…
-    php artisan vendor:publish
-    php artisan markdown-object:test
+```bash
+composer require benbjurstrom/markdown-object
+```
 …
 */
-
 ```
 
 ## Installation
@@ -112,31 +101,9 @@ $json = $mdObj->toJson(JSON_PRETTY_PRINT);
 $copy = \BenBjurstrom\MarkdownObject\Model\MarkdownObject::fromJson($json);
 ```
 
-### Custom Chunk Template
-
-```php
-use BenBjurstrom\MarkdownObject\Render\ChunkTemplate;
-
-$tpl = new ChunkTemplate(
-    breadcrumbFmt: '> Path: %s',
-    breadcrumbJoin: ' › ',
-    includeFilename: true,
-    headingOnce: true,
-    joinWith: "\n\n",
-    repeatTableHeaderOnSplit: true
-);
-
-$chunks = $mdObj->toMarkdownChunks(
-    target: 512,
-    hardCap: 1024,
-    tpl: $tpl
-);
-```
-
 ### Custom Tokenizer
 
 ```php
-use BenBjurstrom\MarkdownObject\Contracts\Tokenizer;
 use BenBjurstrom\MarkdownObject\Tokenizer\TikTokenizer;
 
 // Use a different model
@@ -145,6 +112,8 @@ $tokenizer = TikTokenizer::forModel('gpt-4');
 // Or use a specific encoding
 $tokenizer = TikTokenizer::forEncoding('p50k_base');
 
+// Pass to both build() and toMarkdownChunks()
+$mdObj = $builder->build($doc, $filename, $markdown, $tokenizer);
 $chunks = $mdObj->toMarkdownChunks(
     target: 512,
     hardCap: 1024,
@@ -152,35 +121,47 @@ $chunks = $mdObj->toMarkdownChunks(
 );
 ```
 
-### Custom Splitters
+### Custom Chunking Parameters
 
 ```php
-use BenBjurstrom\MarkdownObject\Planning\{SplitterRegistry, TextSplitter, CodeSplitter, TableSplitter};
-
-$splitters = new SplitterRegistry(
-    new TextSplitter(),
-    new CodeSplitter(),
-    new TableSplitter(repeatHeader: false) // Don't repeat headers
-);
-
 $chunks = $mdObj->toMarkdownChunks(
-    target: 512,
-    hardCap: 1024,
-    splitters: $splitters
+    target: 256,                // Smaller target for content splitting
+    hardCap: 512,               // Smaller hard cap for hierarchy
+    tok: $customTokenizer,      // Optional: use different tokenizer
+    repeatTableHeaders: false   // Optional: don't repeat headers in split tables
 );
 ```
 
 ## Chunking Strategy
 
-The chunking algorithm follows these rules:
+The package uses **hierarchical greedy packing** to maximize semantic coherence:
 
-1. **Section Planning**: Content is organized into sections, one per heading subtree
-2. **Block Splitting**: Each block (text, code, table) is split into units respecting the target token size
-3. **Packing**: Units are packed into chunks with:
-   - Target size: Aim for `target` tokens per chunk
-   - Early finish: Stop at 90% of target when at the last unit of a section
-   - Hard cap: Allow up to `hardCap` tokens only for the final unit
-   - Breadcrumb budget: Breadcrumb tokens are subtracted from the available budget
+### How It Works
+
+1. **Try to fit everything** – if the entire document fits under hardCap, emit one chunk
+2. **Split by top-level headings** – if too large, split by H1s (or H2s if no H1s)
+3. **Greedy pack children** – for each heading, pack as many children as possible while staying under hardCap
+4. **Recursive splitting** – if a heading's subtree is too large, recursively split its children
+5. **Content splitting** – large text blocks, code, and tables split at target boundaries
+
+### Key Principles
+
+- **HardCap for hierarchy** – when combining headings, only hardCap matters (maximizes coherence)
+- **Target for content** – long text, code, and tables split at target boundaries (prevents oversized blocks)
+- **Breadcrumbs as arrays** – structured path data (`['file.md', 'H1', 'H2']`) for flexible rendering
+- **Headings included** – parent headings appear in chunk markdown, breadcrumb provides full path
+
+### Example
+
+```markdown
+## Parent (100 tokens)
+### Child 1 (400 tokens)
+### Child 2 (400 tokens)
+```
+
+With `target: 512, hardCap: 1024`:
+- **Old approach**: 3 chunks (one per heading) → fragmented, loss of context
+- **New approach**: 1 chunk (900 tokens) → related content stays together
 
 ## Testing
 
@@ -189,6 +170,12 @@ Run the tests with:
 ```bash
 composer test
 ```
+
+## Documentation
+
+For detailed architecture documentation, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
+For examples of hierarchical packing behavior, see [EXAMPLES.md](EXAMPLES.md).
 
 ## Changelog
 

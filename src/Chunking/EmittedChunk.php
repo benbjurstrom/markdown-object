@@ -1,6 +1,6 @@
 <?php
 
-namespace BenBjurstrom\MarkdownObject\Render;
+namespace BenBjurstrom\MarkdownObject\Chunking;
 
 final class EmittedChunk
 {
@@ -9,8 +9,6 @@ final class EmittedChunk
         /** @var list<string> */
         public array $breadcrumb,
         public string $markdown,
-        public int $tokenCount,
-        public ?int $partIndex = null,
-        public ?int $partOf = null
+        public int $tokenCount
     ) {}
 }

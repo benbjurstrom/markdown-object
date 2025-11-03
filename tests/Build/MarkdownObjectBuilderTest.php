@@ -21,8 +21,10 @@ beforeEach(function () {
     $this->parser = new MarkdownParser($this->env);
     $this->builder = new MarkdownObjectBuilder;
     // Simple tokenizer for testing - counts string length
-    $this->tokenizer = new class implements \BenBjurstrom\MarkdownObject\Contracts\Tokenizer {
-        public function count(string $text): int {
+    $this->tokenizer = new class implements \BenBjurstrom\MarkdownObject\Contracts\Tokenizer
+    {
+        public function count(string $text): int
+        {
             return strlen($text);
         }
     };
@@ -424,7 +426,7 @@ MD;
     expect($code)->toBeInstanceOf(MarkdownCode::class);
     // Code block token count should include full fenced block
     // CommonMark's getLiteral() includes a trailing newline, so: ```php\necho "test";\n\n```
-    $expectedCodeBlock = "```php\n" . $code->bodyRaw . "\n```";
+    $expectedCodeBlock = "```php\n".$code->bodyRaw."\n```";
     expect($code->tokenCount)->toBe(strlen($expectedCodeBlock));
 
     // Verify heading token counts include their children recursively
@@ -442,4 +444,3 @@ MD;
     $expectedRootTokens = $preamble->tokenCount + $h1->tokenCount;
     expect($result->tokenCount)->toBe($expectedRootTokens);
 });
-

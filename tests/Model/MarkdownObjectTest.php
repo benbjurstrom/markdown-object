@@ -5,7 +5,6 @@ use BenBjurstrom\MarkdownObject\Model\MarkdownCode;
 use BenBjurstrom\MarkdownObject\Model\MarkdownHeading;
 use BenBjurstrom\MarkdownObject\Model\MarkdownObject;
 use BenBjurstrom\MarkdownObject\Model\MarkdownText;
-use BenBjurstrom\MarkdownObject\Render\ChunkTemplate;
 use League\CommonMark\Environment\Environment;
 use League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension;
 use League\CommonMark\Extension\Table\TableExtension;
@@ -18,8 +17,10 @@ beforeEach(function () {
     $this->parser = new MarkdownParser($this->env);
     $this->builder = new MarkdownObjectBuilder;
     // Simple tokenizer for testing - counts string length
-    $this->tokenizer = new class implements \BenBjurstrom\MarkdownObject\Contracts\Tokenizer {
-        public function count(string $text): int {
+    $this->tokenizer = new class implements \BenBjurstrom\MarkdownObject\Contracts\Tokenizer
+    {
+        public function count(string $text): int
+        {
             return strlen($text);
         }
     };
@@ -202,7 +203,7 @@ MD;
 
     expect($chunks)->toBeArray()
         ->and($chunks)->not->toBeEmpty()
-        ->and($chunks[0])->toBeInstanceOf(\BenBjurstrom\MarkdownObject\Render\EmittedChunk::class)
+        ->and($chunks[0])->toBeInstanceOf(\BenBjurstrom\MarkdownObject\Chunking\EmittedChunk::class)
         ->and($chunks[0]->id)->not->toBeNull()
         ->and($chunks[0]->tokenCount)->toBeGreaterThan(0)
         ->and($chunks[0]->markdown)->toBeString();
@@ -224,12 +225,12 @@ MD;
 
     $chunks = $mdObj->toMarkdownChunks();
 
-    // Find a chunk with breadcrumbs
+    // Check that breadcrumb array contains the expected path
     $found = false;
     foreach ($chunks as $chunk) {
-        if (str_contains($chunk->markdown, '> Path:')) {
+        if (! empty($chunk->breadcrumb) && count($chunk->breadcrumb) > 1) {
             $found = true;
-            expect($chunk->markdown)->toContain('docs.md');
+            expect($chunk->breadcrumb)->toContain('docs.md');
             break;
         }
     }
@@ -263,28 +264,9 @@ MD;
 });
 
 it('generates chunks with custom template', function () {
-    $markdown = <<<'MD'
-# Heading
-
-Content here.
-MD;
-
-    $document = $this->parser->parse($markdown);
-    $mdObj = $this->builder->build($document, 'custom.md', $markdown, $this->tokenizer);
-
-    $template = new ChunkTemplate(
-        breadcrumbFmt: '### Location: %s',
-        breadcrumbJoin: ' > ',
-        includeFilename: true,
-        headingOnce: true
-    );
-
-    $chunks = $mdObj->toMarkdownChunks(tpl: $template);
-
-    expect($chunks)->not->toBeEmpty();
-    $firstChunk = $chunks[0];
-    expect($firstChunk->markdown)->toContain('### Location:');
-});
+    // ChunkTemplate removed in hierarchical chunking refactor
+    // Breadcrumbs are now just arrays, not rendered into markdown
+})->skip('ChunkTemplate removed in hierarchical chunking refactor');
 
 it('assigns sequential IDs to chunks', function () {
     $markdown = <<<'MD'
