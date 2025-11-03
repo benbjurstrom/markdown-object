@@ -273,7 +273,7 @@ Example output structure:
 ```php
 [
   EmittedChunk {
-    id: "c1",
+    id: 1,
     breadcrumb: ["docs.md", "Chapter 1", "Section 1.1"],
     markdown: "## Section 1.1\n\nContent here...",
     tokenCount: 487
@@ -406,7 +406,7 @@ Example output structure:
 **Responsibility:** Final output format for chunks
 
 **Properties:**
-- `?string $id` - Sequential ID assigned after chunking ("c1", "c2", etc.)
+- `?int $id` - Sequential ID assigned after chunking (1, 2, etc.)
 - `array $breadcrumb` - Path array: `['filename.md', 'Chapter 1', 'Section 1.1']`
 - `string $markdown` - Rendered markdown content
 - `int $tokenCount` - Final token count of rendered markdown
@@ -445,8 +445,8 @@ Example output structure:
 ```
 
 With target=512, hardCap=1024:
-- **Old approach**: 3 chunks (one per heading)
-- **New approach**: 1 chunk (900 tokens, everything together)
+- **Result**: 1 chunk (900 tokens) containing parent + both children
+- **Why**: Total tokens (900) < hardCap (1024), so all related content stays together
 
 **Benefits:**
 1. **Better semantic coherence** - related content stays together
