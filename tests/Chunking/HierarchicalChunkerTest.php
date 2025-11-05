@@ -80,7 +80,7 @@ MD;
         $this->assertStringContainsString('## Section 2', $chunks[0]->markdown);
     }
 
-    /** Example 8: Preamble handling */
+    /** Example 8: Preamble handling - everything fits */
     public function test_preamble_handling(): void
     {
         $markdown = <<<'MD'
@@ -98,6 +98,35 @@ MD;
         $mdObj = $this->builder->build($doc, 'filename.md', $markdown, $this->tokenizer);
         $chunks = $mdObj->toMarkdownChunks(target: 512, hardCap: 1024, tok: $this->tokenizer);
 
+        // Total is 900 tokens which fits under hardCap (1024), so everything in one chunk
+        $this->assertCount(1, $chunks);
+
+        // Chunk contains preamble + all headings with filename breadcrumb
+        $this->assertEquals(['filename.md'], $chunks[0]->breadcrumb);
+        $this->assertStringContainsString('preamble content', $chunks[0]->markdown);
+        $this->assertStringContainsString('# First Heading', $chunks[0]->markdown);
+        $this->assertStringContainsString('## Subheading', $chunks[0]->markdown);
+    }
+
+    /** Preamble handling when content exceeds hardCap */
+    public function test_preamble_handling_exceeds_hard_cap(): void
+    {
+        $markdown = <<<'MD'
+This is preamble content before any headings.
+{200 tokens}
+
+# First Heading
+{500 tokens}
+
+## Subheading
+{400 tokens}
+MD;
+
+        $doc = $this->parser->parse($markdown);
+        $mdObj = $this->builder->build($doc, 'filename.md', $markdown, $this->tokenizer);
+        $chunks = $mdObj->toMarkdownChunks(target: 512, hardCap: 1024, tok: $this->tokenizer);
+
+        // Total is 1100 tokens which exceeds hardCap (1024), so must split
         $this->assertCount(2, $chunks);
 
         // Chunk 1: Preamble with filename breadcrumb
@@ -105,7 +134,7 @@ MD;
         $this->assertStringContainsString('preamble content', $chunks[0]->markdown);
         $this->assertStringNotContainsString('# First Heading', $chunks[0]->markdown);
 
-        // Chunk 2: First Heading + Subheading
+        // Chunk 2: First Heading + Subheading (900 tokens, fits under hardCap)
         $this->assertEquals(['filename.md', 'First Heading'], $chunks[1]->breadcrumb);
         $this->assertStringContainsString('# First Heading', $chunks[1]->markdown);
         $this->assertStringContainsString('## Subheading', $chunks[1]->markdown);
@@ -487,5 +516,96 @@ MD;
                 $chunks[0]->sourcePosition->bytes->endByte
             );
         }
+    }
+
+    /** Test preamble with headings that fit entirely within hardCap */
+    public function test_preamble_with_headings_fits_in_one_chunk(): void
+    {
+        $markdown = <<<'MD'
+Welcome to the Markdown Object demo! This tool helps you visualize how markdown is parsed and chunked.
+
+## Features
+
+### Real-time Processing
+Type or paste markdown in the left pane and see the results instantly.
+
+### Hierarchical Chunking
+The markdown is intelligently split into chunks that maintain semantic coherence.
+
+### Token Counting
+Each chunk includes accurate token counts for embedding models.
+
+## Example Content
+
+Here's some more content
+MD;
+
+        $doc = $this->parser->parse($markdown);
+        $mdObj = $this->builder->build($doc, 'demo.md', $markdown, $this->tokenizer);
+        $chunks = $mdObj->toMarkdownChunks(target: 512, hardCap: 1024, tok: $this->tokenizer);
+
+        // BUG: Currently returns 3 chunks but should return 1 since total is ~85 tokens
+        // The entire document should fit in one chunk with hardCap of 1024
+        $this->assertCount(1, $chunks);
+        $this->assertEquals(['demo.md'], $chunks[0]->breadcrumb);
+        $this->assertStringContainsString('Welcome to the Markdown Object demo', $chunks[0]->markdown);
+        $this->assertStringContainsString('## Features', $chunks[0]->markdown);
+        $this->assertStringContainsString('## Example Content', $chunks[0]->markdown);
+    }
+
+    /** Test content without headings that exceeds hardCap */
+    public function test_no_headings_content_exceeds_hard_cap(): void
+    {
+        $markdown = <<<'MD'
+This is a plain text document with no headings at all.
+{600 tokens}
+
+More content here that continues on.
+{600 tokens}
+
+And even more content that should cause this to be split.
+{400 tokens}
+MD;
+
+        $doc = $this->parser->parse($markdown);
+        $mdObj = $this->builder->build($doc, 'noheadings.md', $markdown, $this->tokenizer);
+        $chunks = $mdObj->toMarkdownChunks(target: 512, hardCap: 1024, tok: $this->tokenizer);
+
+        // Total is 1600 tokens which exceeds hardCap (1024)
+        // Should be split into multiple chunks
+        $this->assertGreaterThan(1, count($chunks));
+
+        // Each chunk should respect the hardCap
+        foreach ($chunks as $chunk) {
+            $this->assertLessThanOrEqual(1024, $chunk->tokenCount);
+        }
+
+        // All chunks should have the same breadcrumb (filename only)
+        foreach ($chunks as $chunk) {
+            $this->assertEquals(['noheadings.md'], $chunk->breadcrumb);
+        }
+    }
+
+    /** Test content without headings that fits within hardCap */
+    public function test_no_headings_content_fits_hard_cap(): void
+    {
+        $markdown = <<<'MD'
+This is a plain text document with no headings at all.
+{300 tokens}
+
+More content here that continues on.
+{300 tokens}
+MD;
+
+        $doc = $this->parser->parse($markdown);
+        $mdObj = $this->builder->build($doc, 'noheadings.md', $markdown, $this->tokenizer);
+        $chunks = $mdObj->toMarkdownChunks(target: 512, hardCap: 1024, tok: $this->tokenizer);
+
+        // Total is 600 tokens which fits under hardCap (1024)
+        // Should be a single chunk
+        $this->assertCount(1, $chunks);
+        $this->assertEquals(['noheadings.md'], $chunks[0]->breadcrumb);
+        $this->assertStringContainsString('plain text document', $chunks[0]->markdown);
+        $this->assertStringContainsString('More content here', $chunks[0]->markdown);
     }
 }

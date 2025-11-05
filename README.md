@@ -144,6 +144,20 @@ $chunks = $mdObj->toMarkdownChunks(
 );
 ```
 
+### Understanding Token Counts
+
+Chunk token counts include separator tokens (`\n\n`) added when joining content pieces, so they may be slightly higher than the sum of individual node tokens. This is expected and ensures the count accurately reflects what will be embedded.
+
+```php
+// Build-time: sum of nodes (no separators)
+echo $mdObj->tokenCount;  // e.g., 155
+
+// Chunk: includes \n\n separators between elements
+echo $chunks[0]->tokenCount;  // e.g., 163 (8 tokens higher)
+```
+
+The chunk's token count is what matters for embedding model limits and cost calculations.
+
 ### Source Position Tracking
 
 Each chunk includes a `sourcePosition` property that maps it back to the original document, enabling efficient retrieval and navigation:
