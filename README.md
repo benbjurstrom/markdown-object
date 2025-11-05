@@ -143,7 +143,7 @@ $chunks = $mdObj->toMarkdownChunks(
 );
 ```
 
-### Understanding Token Counts
+### A note on Token Counts
 
 Chunk token counts include separator tokens (`\n\n`) added when joining content pieces, so they may be slightly higher than the sum of individual node tokens. This is expected and ensures the count accurately reflects what will be embedded.
 
@@ -155,49 +155,25 @@ echo $mdObj->tokenCount;  // e.g., 155
 echo $chunks[0]->tokenCount;  // e.g., 163 (8 tokens higher)
 ```
 
-### Source Position Tracking
-
-Each chunk includes a `sourcePosition` property that maps it back to the original document, enabling efficient retrieval and navigation:
-
-```php
-foreach ($chunks as $chunk) {
-    $pos = $chunk->sourcePosition;
-    
-    // Line-based access (human-readable, markdown-friendly)
-    if ($pos->lines !== null) {
-        echo "Lines {$pos->lines->startLine} to {$pos->lines->endLine}\n";
-        // Extract using: sed -n '${start},${end}p' file.md
-    }
-    
-    // Byte-based access (O(1) random access for large files)
-    echo "Bytes {$pos->bytes->startByte} to {$pos->bytes->endByte}\n";
-    // Extract using: dd if=file.md skip=$start count=$length bs=1
-}
-```
-
-The hierarchical chunking algorithm ensures that chunks are always contiguous in the source document, making position tracking reliable and predictable.
-
 ## Chunking Strategy
 
-The package uses **hierarchical greedy packing** to maximize semantic coherence:
+The package uses **hierarchical greedy packing** to create semantically coherent chunks that respect your document's natural structure.
+
+### Algorithm Overview
+
+The chunker intelligently splits content using a two-threshold system:
+
+- **`target`** - Soft limit for splitting large content blocks (paragraphs, code, tables)
+- **`hardCap`** - Hard limit for hierarchical decisions (when to split vs. keep sections together)
 
 ### How It Works
 
-1. **Try to fit everything** – if the entire document fits under hardCap, emit one chunk
-2. **Split by top-level headings** – if too large, split by H1s (or H2s if no H1s)
-3. **Greedy pack children** – for each heading, pack as many children as possible while staying under hardCap
-4. **Recursive splitting** – if a child doesn't fit, recurse on it with a deeper breadcrumb
-5. **Continue packing** – after recursion, remaining siblings continue greedy packing (minimizes orphan chunks)
-6. **Content splitting** – large text blocks, code, and tables split at target boundaries
-
-### Key Principles
-
-- **HardCap for hierarchy** – when combining headings, only hardCap matters (maximizes coherence)
-- **Target for content** – long text, code, and tables split at target boundaries (prevents oversized blocks)
-- **All-or-nothing inlining** – child headings are either fully inlined (heading + all descendants) or recursed on separately
-- **Greedy continuation** – after recursing, remaining siblings continue packing to minimize orphan chunks
-- **Breadcrumbs as arrays** – structured path data (`['file.md', 'H1', 'H2']`) for flexible rendering
-- **Headings included** – parent headings appear in chunk markdown, breadcrumb provides full path
+1. **Start whole** – If the entire document fits within `hardCap`, return as a single chunk
+2. **Split hierarchically** – When too large, split at the highest heading level (H1, then H2, etc.)
+3. **Pack greedily** – Combine sibling sections that fit together within `hardCap`
+4. **Recurse deeply** – Sections that don't fit are processed recursively with updated breadcrumbs
+5. **Minimize fragments** – After recursion, continue packing remaining siblings to avoid orphaned content
+6. **Split smartly** – Long paragraphs, code blocks, and tables break at `target` boundaries while preserving readability
 
 ## Testing
 
