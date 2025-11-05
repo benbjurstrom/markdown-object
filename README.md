@@ -6,8 +6,7 @@
 [![GitHub PHPStan Action Status](https://img.shields.io/github/actions/workflow/status/benbjurstrom/markdown-object/phpstan.yml?branch=main&label=phpstan&style=flat-square)](https://github.com/benbjurstrom/markdown-object/actions/workflows/phpstan.yml)
 [![Total Downloads](https://img.shields.io/packagist/dt/benbjurstrom/markdown-object.svg?style=flat-square)](https://packagist.org/packages/benbjurstrom/markdown-object)
 
-**Structure-aware, token-smart Markdown Chunker**
-Turn Markdown into a typed object model, then emit hierarchically-packed chunks that keep related content together. Built on **League CommonMark** and **Yethee\Tiktoken** for accurate parsing and token counting.
+A Structure-aware, token-smart Markdown Chunker. Turns Markdown into hierarchically-packed chunks that keep related content together. Built on [League CommonMark](https://github.com/thephpleague/commonmark) and [Yethee\Tiktoken](https://github.com/yethee/tiktoken-php).
 
 ## Try It Out
 
