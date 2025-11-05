@@ -6,15 +6,13 @@
 [![GitHub PHPStan Action Status](https://img.shields.io/github/actions/workflow/status/benbjurstrom/markdown-object/phpstan.yml?branch=main&label=phpstan&style=flat-square)](https://github.com/benbjurstrom/markdown-object/actions/workflows/phpstan.yml)
 [![Total Downloads](https://img.shields.io/packagist/dt/benbjurstrom/markdown-object.svg?style=flat-square)](https://packagist.org/packages/benbjurstrom/markdown-object)
 
-A Structure-aware, token-smart Markdown Chunker. Turns Markdown into hierarchically-packed chunks that keep related content together. Built on [League CommonMark](https://github.com/thephpleague/commonmark) and [Yethee\Tiktoken](https://github.com/yethee/tiktoken-php).
+Intelligent Markdown chunking that preserves document structure and semantic relationships. Creates token-aware chunks optimized for embedding model context windows. Built on [League CommonMark](https://github.com/thephpleague/commonmark) and [Yethee\Tiktoken](https://github.com/yethee/tiktoken-php).
 
 ## Try It Out
 
 Clone the **[Interactive Demo](https://github.com/benbjurstrom/markdown-object-demo)** to experiment with chunking in real-time. Paste your Markdown, adjust parameters, and see how content gets split into semantic chunks.
 
 <img width="1280" alt="markdown-object-demo" src="https://github.com/user-attachments/assets/2f69026a-24d3-4b44-a656-40b3a62af2be">
-
----
 
 ## Basic Usage
 
