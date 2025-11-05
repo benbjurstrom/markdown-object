@@ -64,44 +64,75 @@ final class HierarchicalChunker
      */
     private function processChildren(array $children, array $breadcrumb): array
     {
-        $chunks = [];
+        // Separate preamble content from headings
         $preamble = [];
+        $headings = [];
 
         foreach ($children as $child) {
             if ($child instanceof MarkdownHeading) {
-                // Emit preamble if exists
-                if (! empty($preamble)) {
-                    $markdown = $this->renderContentPieces($preamble);
-                    $chunks[] = new EmittedChunk(
-                        id: null,
-                        breadcrumb: $breadcrumb,
-                        markdown: $markdown,
-                        tokenCount: $this->tokenizer->count($markdown),
-                        sourcePosition: $this->calculateSourcePosition($preamble)
-                    );
-                    $preamble = [];
-                }
-
-                // Process heading
-                $headingChunks = $this->processHeading($child, $breadcrumb);
-                $chunks = array_merge($chunks, $headingChunks);
+                $headings[] = $child;
             } else {
-                // Accumulate preamble (non-heading content before first heading)
                 $pieces = $this->splitDirectContent($child);
                 $preamble = array_merge($preamble, $pieces);
             }
         }
 
-        // Emit any remaining preamble
+        // Try to fit everything in one chunk (algorithm step 1)
+        if (! empty($preamble) && ! empty($headings)) {
+            $preambleTokens = $this->countPieces($preamble);
+            $headingsTokens = 0;
+            foreach ($headings as $heading) {
+                $headingsTokens += $this->countAllRecursive($heading);
+            }
+
+            $totalTokens = $preambleTokens + $headingsTokens;
+
+            if ($totalTokens <= $this->hardCap) {
+                // Everything fits! Combine preamble + all headings into one chunk
+                $allPieces = $preamble;
+                foreach ($headings as $heading) {
+                    $allPieces = array_merge($allPieces, $this->flattenAllRecursive($heading));
+                }
+                $markdown = $this->renderContentPieces($allPieces);
+
+                return [new EmittedChunk(
+                    id: null,
+                    breadcrumb: $breadcrumb,
+                    markdown: $markdown,
+                    tokenCount: $this->tokenizer->count($markdown),
+                    sourcePosition: $this->calculateSourcePosition($allPieces)
+                )];
+            }
+        }
+
+        // Can't fit everything - emit preamble and headings separately
+        $chunks = [];
+
+        // Emit preamble if exists
         if (! empty($preamble)) {
-            $markdown = $this->renderContentPieces($preamble);
-            $chunks[] = new EmittedChunk(
-                id: null,
-                breadcrumb: $breadcrumb,
-                markdown: $markdown,
-                tokenCount: $this->tokenizer->count($markdown),
-                sourcePosition: $this->calculateSourcePosition($preamble)
-            );
+            $preambleTokens = $this->countPieces($preamble);
+
+            // Check if preamble exceeds hardCap - if so, pack into multiple chunks
+            if ($preambleTokens > $this->hardCap) {
+                $preambleChunks = $this->packPiecesIntoChunks($preamble, $breadcrumb);
+                $chunks = array_merge($chunks, $preambleChunks);
+            } else {
+                // Preamble fits in one chunk
+                $markdown = $this->renderContentPieces($preamble);
+                $chunks[] = new EmittedChunk(
+                    id: null,
+                    breadcrumb: $breadcrumb,
+                    markdown: $markdown,
+                    tokenCount: $this->tokenizer->count($markdown),
+                    sourcePosition: $this->calculateSourcePosition($preamble)
+                );
+            }
+        }
+
+        // Process each heading
+        foreach ($headings as $heading) {
+            $headingChunks = $this->processHeading($heading, $breadcrumb);
+            $chunks = array_merge($chunks, $headingChunks);
         }
 
         return $chunks;

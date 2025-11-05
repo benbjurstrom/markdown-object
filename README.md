@@ -6,22 +6,15 @@
 [![GitHub PHPStan Action Status](https://img.shields.io/github/actions/workflow/status/benbjurstrom/markdown-object/phpstan.yml?branch=main&label=phpstan&style=flat-square)](https://github.com/benbjurstrom/markdown-object/actions/workflows/phpstan.yml)
 [![Total Downloads](https://img.shields.io/packagist/dt/benbjurstrom/markdown-object.svg?style=flat-square)](https://packagist.org/packages/benbjurstrom/markdown-object)
 
-**Structure-aware, token-smart Markdown → chunks for RAG.**
-Turn Markdown into a typed object model, then emit hierarchically-packed chunks that keep related content together. Built on **League CommonMark** and **Yethee\Tiktoken** for accurate parsing and token counting.
+Intelligent Markdown chunking that preserves document structure and semantic relationships. Creates token-aware chunks optimized for embedding model context windows. Built on [League CommonMark](https://github.com/thephpleague/commonmark) and [Yethee\Tiktoken](https://github.com/yethee/tiktoken-php).
 
-### Why you'd use it
+## Try It Out
 
-* **Hierarchical greedy packing** – keeps related content together at the highest possible level, maximizing semantic coherence
-* **Smart chunking** – uses hardCap for hierarchy decisions, target for content splitting
-* **Breadcrumb arrays** – `['file.md', 'Chapter 1', 'Section 1.1']` provide structured navigation context
-* **Token-accurate** – tiktoken integration ensures precise token counts for your embedding model
-* **No empty chunks** – parent headings always appear with content, never in isolation
+Clone the **[Interactive Demo](https://github.com/benbjurstrom/markdown-object-demo)** to experiment with chunking in real-time. Paste your Markdown, adjust parameters, and see how content gets split into semantic chunks.
 
----
+<img width="1280" alt="markdown-object-demo" src="https://github.com/user-attachments/assets/2f69026a-24d3-4b44-a656-40b3a62af2be">
 
 ## Basic Usage
-
-From raw Markdown to RAG-ready chunks:
 
 ```php
 use League\CommonMark\Environment\Environment;
@@ -41,7 +34,7 @@ $filename = 'guide.md';
 $markdown = file_get_contents($filename);
 $doc      = $parser->parse($markdown);
 
-// 2) Build the structured model (tokenizer required)
+// 2) Build the structured model
 $builder   = new MarkdownObjectBuilder();
 $tokenizer = TikTokenizer::forModel('gpt-3.5-turbo');
 $mdObj     = $builder->build($doc, $filename, $markdown, $tokenizer);
@@ -50,46 +43,52 @@ $mdObj     = $builder->build($doc, $filename, $markdown, $tokenizer);
 $chunks = $mdObj->toMarkdownChunks(target: 512, hardCap: 1024);
 
 foreach ($chunks as $chunk) {
-    echo "ID: {$chunk->id}\n";
-    echo "Path: " . implode(' › ', $chunk->breadcrumb) . "\n";
-    echo "Tokens: {$chunk->tokenCount}\n";
-    
+    echo "---\n";
+    echo "Chunk: {$chunk->id} | {$chunk->tokenCount} tokens";
+
     // Source position tracking for finding chunks in original document
     $pos = $chunk->sourcePosition;
     if ($pos->lines !== null) {
-        echo "Lines: {$pos->lines->startLine}-{$pos->lines->endLine}\n";
+        echo " | Line: {$pos->lines->startLine}";
     }
-    echo "Bytes: {$pos->bytes->startByte}-{$pos->bytes->endByte}\n";
-    
-    echo "\n" . $chunk->markdown . "\n\n---\n\n";
+    echo "\n";
+    echo implode(' › ', $chunk->breadcrumb) . "\n";
+    echo "---\n\n";
+    echo $chunk->markdown . "\n\n";
 }
 
 /*
-Example output:
-ID: 1
-Path: guide.md › Getting Started
-Tokens: 421
-Lines: 1-15
-Bytes: 0-523
-
-# Getting Started
-Markdown Object turns Markdown into a typed model and emits
-hierarchically-packed chunks for better retrieval…
-
+---
+Chunk: 1 | 163 tokens | Line: 1
+demo.md › Getting Started
 ---
 
-ID: 2
-Path: guide.md › Getting Started › Installation
-Tokens: 503
-Lines: 16-28
-Bytes: 524-1247
+# Getting Started
 
-## Installation
-Run:
-```bash
-composer require benbjurstrom/markdown-object
-```
-…
+Welcome to the Markdown Object demo! This tool helps you visualize how markdown is parsed and chunked.
+
+## Features
+
+### Real-time Processing
+
+Type or paste markdown in the left pane and see the results instantly.
+
+### Hierarchical Chunking
+
+Content is automatically organized into semantic chunks that keep related information together…
+
+---
+Chunk: 2 | 287 tokens | Line: 18
+demo.md › Getting Started › Advanced Options
+---
+
+## Advanced Options
+
+Configure chunking parameters to see how different settings affect the output.
+
+### Token Limits
+
+Adjust the target and hard cap values to control chunk sizes…
 */
 ```
 
@@ -144,67 +143,37 @@ $chunks = $mdObj->toMarkdownChunks(
 );
 ```
 
-### Source Position Tracking
+### A note on Token Counts
 
-Each chunk includes a `sourcePosition` property that maps it back to the original document, enabling efficient retrieval and navigation:
+Chunk token counts include separator tokens (`\n\n`) added when joining content pieces, so they may be slightly higher than the sum of individual node tokens. This is expected and ensures the count accurately reflects what will be embedded.
 
 ```php
-foreach ($chunks as $chunk) {
-    $pos = $chunk->sourcePosition;
-    
-    // Line-based access (human-readable, markdown-friendly)
-    if ($pos->lines !== null) {
-        echo "Lines {$pos->lines->startLine} to {$pos->lines->endLine}\n";
-        // Extract using: sed -n '${start},${end}p' file.md
-    }
-    
-    // Byte-based access (O(1) random access for large files)
-    echo "Bytes {$pos->bytes->startByte} to {$pos->bytes->endByte}\n";
-    // Extract using: dd if=file.md skip=$start count=$length bs=1
-}
+// Build-time: sum of nodes (no separators)
+echo $mdObj->tokenCount;  // e.g., 155
+
+// Chunk: includes \n\n separators between elements
+echo $chunks[0]->tokenCount;  // e.g., 163 (8 tokens higher)
 ```
-
-**Use cases:**
-- **LLM context retrieval** – quickly locate and extract surrounding context from the source document
-- **Targeted edits** – make changes to specific sections based on retrieval results
-- **Navigation** – jump to related sections in the original document
-- **Debugging** – verify chunk content matches source material
-
-The hierarchical chunking algorithm ensures that chunks are always contiguous in the source document, making position tracking reliable and predictable.
 
 ## Chunking Strategy
 
-The package uses **hierarchical greedy packing** to maximize semantic coherence:
+The package uses **hierarchical greedy packing** to create semantically coherent chunks that respect your document's natural structure.
+
+### Algorithm Overview
+
+The chunker intelligently splits content using a two-threshold system:
+
+- **`target`** - Soft limit for splitting large content blocks (paragraphs, code, tables)
+- **`hardCap`** - Hard limit for hierarchical decisions (when to split vs. keep sections together)
 
 ### How It Works
 
-1. **Try to fit everything** – if the entire document fits under hardCap, emit one chunk
-2. **Split by top-level headings** – if too large, split by H1s (or H2s if no H1s)
-3. **Greedy pack children** – for each heading, pack as many children as possible while staying under hardCap
-4. **Recursive splitting** – if a child doesn't fit, recurse on it with a deeper breadcrumb
-5. **Continue packing** – after recursion, remaining siblings continue greedy packing (minimizes orphan chunks)
-6. **Content splitting** – large text blocks, code, and tables split at target boundaries
-
-### Key Principles
-
-- **HardCap for hierarchy** – when combining headings, only hardCap matters (maximizes coherence)
-- **Target for content** – long text, code, and tables split at target boundaries (prevents oversized blocks)
-- **All-or-nothing inlining** – child headings are either fully inlined (heading + all descendants) or recursed on separately
-- **Greedy continuation** – after recursing, remaining siblings continue packing to minimize orphan chunks
-- **Breadcrumbs as arrays** – structured path data (`['file.md', 'H1', 'H2']`) for flexible rendering
-- **Headings included** – parent headings appear in chunk markdown, breadcrumb provides full path
-
-### Example
-
-```markdown
-## Parent (100 tokens)
-### Child 1 (400 tokens)
-### Child 2 (400 tokens)
-```
-
-With `target: 512, hardCap: 1024`:
-- **Result**: 1 chunk (900 tokens) – all related content stays together under the parent heading
-- **Why**: Total tokens (900) < hardCap (1024), so semantic coherence is preserved
+1. **Start whole** – If the entire document fits within `hardCap`, return as a single chunk
+2. **Split hierarchically** – When too large, split at the highest heading level (H1, then H2, etc.)
+3. **Pack greedily** – Combine sibling sections that fit together within `hardCap`
+4. **Recurse deeply** – Sections that don't fit are processed recursively with updated breadcrumbs
+5. **Minimize fragments** – After recursion, continue packing remaining siblings to avoid orphaned content
+6. **Split smartly** – Long paragraphs, code blocks, and tables break at `target` boundaries while preserving readability
 
 ## Testing
 
