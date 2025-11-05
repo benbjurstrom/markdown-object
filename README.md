@@ -19,6 +19,14 @@ Turn Markdown into a typed object model, then emit hierarchically-packed chunks 
 
 ---
 
+## Try It Out
+
+🚀 **[Interactive Demo](https://github.com/benbjurstrom/markdown-object-demo)** – Experiment with chunking in real-time. Paste your Markdown, adjust parameters, and see how content gets split into semantic chunks.
+
+<img width="1280" alt="markdown-object-demo" src="https://github.com/user-attachments/assets/2f69026a-24d3-4b44-a656-40b3a62af2be">
+
+---
+
 ## Basic Usage
 
 From raw Markdown to RAG-ready chunks:
