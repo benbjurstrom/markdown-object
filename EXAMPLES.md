@@ -344,7 +344,7 @@ Breadcrumb: ["filename.md", "Chapter 1"]
 
 ```
 [Chunk 2] - 700 tokens
-Breadcrumb: ["filename.md", "Chapter 1", "Section 1.2"]
+Breadcrumb: ["filename.md", "Chapter 1"]
 
 ## Section 1.2
 {700 tokens}
@@ -352,7 +352,7 @@ Breadcrumb: ["filename.md", "Chapter 1", "Section 1.2"]
 
 ```
 [Chunk 3] - 500 tokens
-Breadcrumb: ["filename.md", "Chapter 1", "Section 1.3"]
+Breadcrumb: ["filename.md", "Chapter 1"]
 
 ## Section 1.3
 {500 tokens}
@@ -361,8 +361,7 @@ Breadcrumb: ["filename.md", "Chapter 1", "Section 1.3"]
 **Rationale:**
 - Chapter 1 (1900 tokens) exceeds hardCap, so must split
 - Try to fit: Chapter 1 + Section 1.1 = 700 tokens ✓ (fits hardCap)
-- Section 1.2 (700) becomes separate chunk
-- Section 1.3 (500) becomes separate chunk
+- Remaining sections keep the parent breadcrumb and are emitted as separate chunks; merging keeps breadcrumb consistent while avoiding over-fragmentation
 
 ---
 
@@ -393,7 +392,7 @@ Breadcrumb: ["filename.md", "Chapter 1", "Section 1.3"]
 
 **Config:** target=512, hardCap=1024
 
-**Expected Output:** 4 chunks
+**Expected Output:** 3 chunks
 
 ```
 [Chunk 1] - 200 tokens
@@ -412,16 +411,11 @@ Breadcrumb: ["filename.md", "Chapter 1", "Section 1.1"]
 ```
 
 ```
-[Chunk 3] - 400 tokens
-Breadcrumb: ["filename.md", "Chapter 1", "Section 1.1", "Subsection 1.1.1"]
+[Chunk 3] - 800 tokens
+Breadcrumb: ["filename.md", "Chapter 1", "Section 1.1"]
 
 ### Subsection 1.1.1
 {400 tokens}
-```
-
-```
-[Chunk 4] - 400 tokens
-Breadcrumb: ["filename.md", "Chapter 1", "Section 1.1"]
 
 ### Subsection 1.1.2
 {400 tokens}
@@ -430,11 +424,8 @@ Breadcrumb: ["filename.md", "Chapter 1", "Section 1.1"]
 **Rationale:**
 - Chapter 1 + Section 1.1 total = 1700 > hardCap, can't fit together
 - Chapter 1 alone (200 tokens) becomes one chunk
-- Section 1.1 (700) + Subsection 1.1.1 (400) = 1100 > hardCap, can't inline any child
 - Section 1.1 direct content (700 tokens) becomes one chunk
-- Subsection 1.1.1 gets recursed with deeper breadcrumb
-- After recursing, greedy packing continues: Subsection 1.1.2 (400 tokens) fits in empty accumulator, gets packed with parent breadcrumb
-- This demonstrates greedy packing behavior: remaining siblings after recursion still try to pack together to minimize fragmentation
+- Subsections are processed separately, then merged back under the parent breadcrumb because together they fit under hardCap (800), reducing unnecessary fragments
 
 ---
 
@@ -518,19 +509,14 @@ Breadcrumb: ["filename.md", "First Heading"]
 
 **Config:** target=512, hardCap=1024
 
-**Expected Output:** 4 chunks
+**Expected Output:** 3 chunks
 
 ```
-[Chunk 1] - 100 tokens
-Breadcrumb: ["filename.md", "Small Chapter"]
+[Chunk 1] - 900 tokens
+Breadcrumb: ["filename.md"]
 
 # Small Chapter
 {100 tokens}
-```
-
-```
-[Chunk 2] - 800 tokens
-Breadcrumb: ["filename.md", "Medium Chapter"]
 
 # Medium Chapter
 {500 tokens}
@@ -540,7 +526,7 @@ Breadcrumb: ["filename.md", "Medium Chapter"]
 ```
 
 ```
-[Chunk 3] - 600 tokens
+[Chunk 2] - 600 tokens
 Breadcrumb: ["filename.md", "Large Chapter"]
 
 # Large Chapter
@@ -548,8 +534,8 @@ Breadcrumb: ["filename.md", "Large Chapter"]
 ```
 
 ```
-[Chunk 4] - 700 tokens
-Breadcrumb: ["filename.md", "Large Chapter", "Section A"]
+[Chunk 3] - 700 tokens
+Breadcrumb: ["filename.md", "Large Chapter"]
 
 ## Section A
 {400 tokens}
@@ -559,13 +545,9 @@ Breadcrumb: ["filename.md", "Large Chapter", "Section A"]
 ```
 
 **Rationale:**
-- Small Chapter: 100 tokens, fits alone
-- Medium Chapter: 800 tokens, fits with its H2
-- Large Chapter: 1300 tokens total exceeds hardCap, must split
-  - Try to inline Section A (700 tokens): 600 + 700 = 1300 > hardCap ✗
-  - Large Chapter alone becomes one chunk (600 tokens)
-  - Recurse on Section A: 700 tokens fits under hardCap, so Section A + Subsection A1 stay together
-  - Algorithm keeps heading and all children together when possible (doesn't split to Subsection A1 level)
+- Small + Medium (with Section 1) together are 900 tokens, so they merge under the filename breadcrumb
+- Large Chapter total (1300) exceeds hardCap, so it splits: heading alone, then Section A subtree
+- Section A and Subsection A1 stay together (700 tokens < hardCap)
 
 ---
 
