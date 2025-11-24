@@ -234,6 +234,7 @@ final class HierarchicalChunker
                 if ($childTokens <= $this->hardCap) {
                     $accumulated = $this->flattenAllRecursive($child);
                     $currentTokens = $childTokens;
+
                     continue;
                 }
 
@@ -556,7 +557,7 @@ final class HierarchicalChunker
      * breadcrumb when available.
      *
      * @param  list<EmittedChunk>  $chunks
-     * @param  list<string>        $parentBreadcrumb
+     * @param  list<string>  $parentBreadcrumb
      * @return list<string>
      */
     private function mergedBreadcrumb(array $chunks, array $parentBreadcrumb): array

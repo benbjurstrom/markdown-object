@@ -596,7 +596,6 @@ MD;
         $this->assertStringContainsString('More content here', $chunks[0]->markdown);
     }
 
-
     /** Later small headings should merge back together when under hardCap */
     public function test_late_headings_merge_under_hard_cap(): void
     {
