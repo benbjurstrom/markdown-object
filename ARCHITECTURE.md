@@ -376,6 +376,7 @@ Example output structure:
 - Direct content split at target boundaries using splitters
 - Children packed at hardCap boundaries for maximum coherence
 - Recursive delegation when children don't fit
+- Post-merge step collapses adjacent sibling chunks sharing a parent breadcrumb when their combined markdown <= hardCap, reducing over-fragmentation from many small headings
 
 ### 4. Splitters (`src/Chunking/*Splitter.php`)
 
@@ -459,6 +460,7 @@ With target=512, hardCap=1024:
 - **All-or-nothing inlining** - child headings are either fully inlined (heading + all descendants) or recursed on separately
 - **Greedy continuation** - after recursing on a child that doesn't fit, remaining siblings continue trying to pack with parent breadcrumb
 - **Multiple chunks, same breadcrumb** - natural result of greedy continuation (e.g., parent + child1, child2-recursed, child3 all share parent breadcrumb)
+- **Sibling post-merge** - after greedy packing, adjacent chunks that share the same parent breadcrumb are merged when their combined markdown is under hardCap, reducing over-fragmentation from many small headings
 
 ### Why HardCap for Hierarchy, Target for Content?
 
@@ -713,7 +715,7 @@ foreach ($mdObj->children as $child) {
 7. **Recursive algorithm** - Children processed via recursion, not flattening
 8. **All-or-nothing child inlining** - Child headings fully inlined (heading + all descendants) or recursed on separately, no partial inlining
 9. **Greedy continuation after recursion** - After recursing on a child, remaining siblings continue trying to pack with parent breadcrumb, minimizing orphan chunks
-10. **Multiple chunks can share breadcrumb** - Natural result of greedy continuation (e.g., parent+child1, child2-recursed, child3)
+10. **Multiple chunks can share breadcrumb** - Natural result of greedy continuation and the final sibling merge (adjacent chunks with the same parent breadcrumb are merged when they fit under hardCap)
 11. **Final token counts recalculated** - From rendered markdown for accuracy
 12. **Semantic boundaries matter** - Chunks respect document structure (headings, paragraphs, sentences) not arbitrary character counts
 13. **Position tracking** - Byte/line spans enable source mapping for future features
