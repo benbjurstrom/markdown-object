@@ -46,6 +46,7 @@ final class HierarchicalChunker
 
         // Process children (will handle grouping based on token counts)
         $chunks = $this->processChildren($root->children, $breadcrumb);
+        $chunks = $this->mergeSiblingChunks($chunks);
 
         // Assign IDs
         foreach ($chunks as $i => $chunk) {
@@ -217,7 +218,7 @@ final class HierarchicalChunker
                 $accumulated = array_merge($accumulated, $childPieces);
                 $currentTokens += $childTokens;
             } else {
-                // Doesn't fit - emit accumulated and recurse on child
+                // Doesn't fit - emit accumulated chunk
                 if (! empty($accumulated)) {
                     $markdown = $this->renderContentPieces($accumulated);
                     $chunks[] = new EmittedChunk(
@@ -229,7 +230,14 @@ final class HierarchicalChunker
                     );
                 }
 
-                // Recursively process child
+                // If the child itself fits, start a fresh accumulation with it.
+                if ($childTokens <= $this->hardCap) {
+                    $accumulated = $this->flattenAllRecursive($child);
+                    $currentTokens = $childTokens;
+                    continue;
+                }
+
+                // Otherwise recursively process the oversized child
                 $childChunks = $this->processHeading($child, $newBreadcrumb);
                 $chunks = array_merge($chunks, $childChunks);
 
@@ -447,6 +455,174 @@ final class HierarchicalChunker
         }
 
         return $total;
+    }
+
+    /**
+     * Merge adjacent chunks that share the same parent breadcrumb when the combined
+     * markdown fits under the hard cap. This reduces over-fragmentation that can
+     * happen after a split at a particular hierarchy level.
+     *
+     * @param  list<EmittedChunk>  $chunks
+     * @return list<EmittedChunk>
+     */
+    private function mergeSiblingChunks(array $chunks): array
+    {
+        if (count($chunks) < 2) {
+            return $chunks;
+        }
+
+        $merged = [];
+        $i = 0;
+        $total = count($chunks);
+
+        while ($i < $total) {
+            $group = [$chunks[$i]];
+            $parentBreadcrumb = $this->parentBreadcrumb($chunks[$i]->breadcrumb);
+            $groupMarkdown = $this->normalizedChunkMarkdown($chunks[$i]->markdown);
+            $groupTokens = $groupMarkdown === '' ? 0 : $chunks[$i]->tokenCount;
+            $j = $i + 1;
+
+            while ($j < $total) {
+                $next = $chunks[$j];
+
+                if ($this->parentBreadcrumb($next->breadcrumb) !== $parentBreadcrumb) {
+                    break;
+                }
+
+                $nextMarkdown = $this->normalizedChunkMarkdown($next->markdown);
+                $candidateMarkdown = $this->concatenateMarkdown($groupMarkdown, $nextMarkdown);
+                $candidateTokens = $candidateMarkdown === $groupMarkdown
+                    ? $groupTokens
+                    : ($candidateMarkdown === '' ? 0 : $this->tokenizer->count($candidateMarkdown));
+
+                if ($candidateTokens > $this->hardCap) {
+                    break;
+                }
+
+                $group[] = $next;
+                $groupMarkdown = $candidateMarkdown;
+                $groupTokens = $candidateTokens;
+                $j++;
+            }
+
+            if (count($group) === 1) {
+                $merged[] = $group[0];
+            } else {
+                $markdown = $groupMarkdown !== '' ? $groupMarkdown : $this->concatenateGroupMarkdown($group);
+                $merged[] = new EmittedChunk(
+                    id: null,
+                    breadcrumb: $this->mergedBreadcrumb($group, $parentBreadcrumb),
+                    markdown: $markdown,
+                    tokenCount: $groupTokens !== 0 ? $groupTokens : $this->tokenizer->count($markdown),
+                    sourcePosition: $this->mergeChunkPositions($group)
+                );
+            }
+
+            $i += count($group);
+        }
+
+        return $merged;
+    }
+
+    /**
+     * @param  list<EmittedChunk>  $chunks
+     */
+    private function concatenateGroupMarkdown(array $chunks): string
+    {
+        $markdown = '';
+        foreach ($chunks as $chunk) {
+            $markdown = $this->concatenateMarkdown($markdown, $this->normalizedChunkMarkdown($chunk->markdown));
+        }
+
+        return $markdown;
+    }
+
+    /**
+     * @param  list<string>  $breadcrumb
+     * @return list<string>
+     */
+    private function parentBreadcrumb(array $breadcrumb): array
+    {
+        if (count($breadcrumb) <= 1) {
+            return [];
+        }
+
+        return array_slice($breadcrumb, 0, -1);
+    }
+
+    /**
+     * Choose breadcrumb for a merged chunk. If all merged chunks already share
+     * the same breadcrumb, keep it. Otherwise fall back to the shared parent
+     * breadcrumb when available.
+     *
+     * @param  list<EmittedChunk>  $chunks
+     * @param  list<string>        $parentBreadcrumb
+     * @return list<string>
+     */
+    private function mergedBreadcrumb(array $chunks, array $parentBreadcrumb): array
+    {
+        $unique = array_unique(array_map(
+            fn (EmittedChunk $chunk) => implode("\0", $chunk->breadcrumb),
+            $chunks
+        ));
+
+        if (count($unique) === 1) {
+            return $chunks[0]->breadcrumb;
+        }
+
+        if (! empty($parentBreadcrumb)) {
+            return $parentBreadcrumb;
+        }
+
+        return $chunks[0]->breadcrumb;
+    }
+
+    /**
+     * @param  list<EmittedChunk>  $chunks
+     */
+    private function mergeChunkPositions(array $chunks): Position
+    {
+        $positions = array_map(fn (EmittedChunk $chunk) => $chunk->sourcePosition, $chunks);
+
+        $minStartByte = PHP_INT_MAX;
+        $maxEndByte = PHP_INT_MIN;
+        $minStartLine = PHP_INT_MAX;
+        $maxEndLine = PHP_INT_MIN;
+        $hasLines = false;
+
+        foreach ($positions as $pos) {
+            $minStartByte = min($minStartByte, $pos->bytes->startByte);
+            $maxEndByte = max($maxEndByte, $pos->bytes->endByte);
+
+            if ($pos->lines !== null) {
+                $hasLines = true;
+                $minStartLine = min($minStartLine, $pos->lines->startLine);
+                $maxEndLine = max($maxEndLine, $pos->lines->endLine);
+            }
+        }
+
+        return new Position(
+            bytes: new ByteSpan($minStartByte, $maxEndByte),
+            lines: $hasLines ? new LineSpan($minStartLine, $maxEndLine) : null
+        );
+    }
+
+    private function normalizedChunkMarkdown(string $markdown): string
+    {
+        return trim($markdown) === '' ? '' : $markdown;
+    }
+
+    private function concatenateMarkdown(string $left, string $right): string
+    {
+        if ($left === '') {
+            return $right;
+        }
+
+        if ($right === '') {
+            return $left;
+        }
+
+        return $left."\n\n".$right;
     }
 
     /**
